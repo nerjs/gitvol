@@ -1,19 +1,18 @@
-use std::{ path::PathBuf, str::FromStr};
 use anyhow::{Context, Result};
+use std::{path::PathBuf, str::FromStr};
 use tokio::fs::{create_dir, remove_dir_all};
-
-
 
 #[derive(Debug, Clone)]
 pub struct GlobalConfig {
     pub root_dir: String,
     pub plugin_name: String,
-    pub base_dir: PathBuf, 
+    pub base_dir: PathBuf,
 }
 
 impl GlobalConfig {
     pub async fn new(root_dir: &str, plugin_name: &str) -> Result<Self> {
-        let mut base_dir = PathBuf::from_str(root_dir).with_context(|| format!("create pathbuf from root {root_dir}"))?;
+        let mut base_dir = PathBuf::from_str(root_dir)
+            .with_context(|| format!("create pathbuf from root {root_dir}"))?;
         anyhow::ensure!(base_dir.exists(), "root dir {root_dir} not exists");
         let plugin_name = plugin_name.trim();
         anyhow::ensure!(plugin_name.len() > 1, "plugin name cannot be empty");
@@ -21,15 +20,23 @@ impl GlobalConfig {
         base_dir.push(plugin_name);
 
         if !base_dir.exists() {
-            create_dir(&base_dir).await.with_context(|| format!("Filed creating directory {:?}", base_dir.to_str()))?;
+            create_dir(&base_dir)
+                .await
+                .with_context(|| format!("Filed creating directory {:?}", base_dir.to_str()))?;
         }
 
-        Ok(Self {root_dir: root_dir.to_string(), plugin_name: plugin_name.to_string(), base_dir})
+        Ok(Self {
+            root_dir: root_dir.to_string(),
+            plugin_name: plugin_name.to_string(),
+            base_dir,
+        })
     }
 
     pub async fn clear(&self) -> Result<()> {
         if self.base_dir.exists() && self.base_dir.is_dir() {
-            remove_dir_all(&self.base_dir).await.context("remove base dir")?;
+            remove_dir_all(&self.base_dir)
+                .await
+                .context("remove base dir")?;
         }
         Ok(())
     }
@@ -103,4 +110,3 @@ mod tests {
         assert!(err_string.contains("plugin name cannot be empty"));
     }
 }
-
