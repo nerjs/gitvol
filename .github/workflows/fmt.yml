@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PUBLISH_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.ref_name }}
 
       - name: Install stable rust tools
@@ -35,5 +35,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "style: apply rustfmt"
+          git commit -am "fix: apply rustfmt"
           git push origin ${{ github.ref_name }}

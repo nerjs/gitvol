@@ -18,7 +18,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PUBLISH_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           ref: dependencies
 
       - name: fetch
@@ -28,4 +28,7 @@ jobs:
         run: git merge origin/master -m "Sync master to dependencies [skip-CI]"
 
       - name: push into dependencies
-        run: git push origin dependencies
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git push origin dependencies
