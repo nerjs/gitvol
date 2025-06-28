@@ -44,9 +44,6 @@ jobs:
 
       - name: Install stable rust tools
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
             
       - name: Cache Cargo target directory
         uses: actions/cache@v3

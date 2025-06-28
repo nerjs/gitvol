@@ -18,7 +18,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PUBLISH_TOKEN }}
           ref: dependencies
 
       - name: fetch
