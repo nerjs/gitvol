@@ -70,8 +70,7 @@ mod tests {
         assert!(base_dir.exists());
 
         plugin.clear().await.unwrap();
-        assert!(!base_dir.exists()); 
-
+        assert!(!base_dir.exists());
 
         base_dir.pop();
         assert!(base_dir.exists());
