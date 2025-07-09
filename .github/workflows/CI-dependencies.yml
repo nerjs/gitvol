@@ -1,7 +1,10 @@
-name: "CI: tests, linter and build"
+name: "CI (dependencies): tests, linter and build"
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - dependencies 
   pull_request:
     branches:
       - dependencies 
@@ -68,9 +71,6 @@ jobs:
 
       - name: Install stable rust tools
         uses: dtolnay/rust-toolchain@stable
-        
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
             
       - name: Cache Cargo target directory
         uses: actions/cache@v3
