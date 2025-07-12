@@ -1,9 +1,21 @@
+#[allow(unused_variables)]
 use anyhow::Result;
-mod global_config;
-mod mount_config;
-mod store;
+use tracing::debug;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+
 
 #[tokio::main]
 async fn main() -> Result<()> {
+        tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "debug".into()),
+            )
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+
+    debug!("start");
+
     Ok(())
 }
