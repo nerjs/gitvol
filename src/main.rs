@@ -1,7 +1,7 @@
 mod handlers;
 mod state;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use axum::{Router, routing::post, serve};
 use tokio::net::TcpListener;
 use tracing::info;
@@ -40,7 +40,11 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let state = GitvolState;
+    let volumes_dir = std::env::current_dir()
+        .context("getting the current directory to create a volumes directory")?
+        .join("gitvol_volumes");
+
+    let state = GitvolState::new(volumes_dir);
     let app = create_app(state);
     let listener = TcpListener::bind("127.0.0.1:5432").await?;
     info!("listening on {}", listener.local_addr().unwrap());

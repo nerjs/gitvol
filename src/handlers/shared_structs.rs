@@ -33,24 +33,12 @@ pub struct NamedWID {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct MountPoint {
-    pub mountpoint: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mountpoint: Option<PathBuf>,
 }
 
 impl IntoResponse for MountPoint {
     fn into_response(self) -> Response {
         Json(self).into_response()
     }
-}
-
-impl From<PathBuf> for MountPoint {
-    fn from(value: PathBuf) -> Self {
-        Self { mountpoint: value }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct NamedMountPoint {
-    pub name: String,
-    pub mountpoint: Option<String>,
 }
