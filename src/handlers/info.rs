@@ -11,10 +11,10 @@ use axum::{
     extract::State,
     response::{IntoResponse, Response},
 };
+use log::{debug, kv};
 use serde::Serialize;
 use serde_json::json;
 use tokio::join;
-use tracing::debug;
 
 pub async fn capabilities_handler() -> impl IntoResponse {
     debug!("request capabilities");
@@ -22,7 +22,7 @@ pub async fn capabilities_handler() -> impl IntoResponse {
 }
 
 async fn read_repo(name: &str, state: &GitvolState) -> Result<(Option<PathBuf>, RepoStatus)> {
-    debug!("Getting repo info. volume name = '{}'", name);
+    debug!(name; "Getting repo info.");
     let (volumes, repos) = join!(state.volumes.read(), state.repos.read());
 
     let Volume { path, hash, .. } = volumes.get(name).ok_or_else(|| {
@@ -46,9 +46,8 @@ async fn read_repo(name: &str, state: &GitvolState) -> Result<(Option<PathBuf>, 
         Some(path.clone())
     };
 
-    debug!(
-        "Successfully got repo info. volume name = '{}' ; status = '{:?}' ; path = '{:?}'",
-        name, status, mountpoint
+    debug!(name, status, path = mountpoint.as_ref().map(|v| v.to_str());
+        "Successfully got repo info.",
     );
 
     Ok((mountpoint, status))
@@ -58,11 +57,12 @@ pub async fn path_handler(
     State(state): State<GitvolState>,
     Json(Named { name }): Json<Named>,
 ) -> PluginResult<MountPoint> {
-    debug!(name, "Getting path for volume");
+    debug!(name; "Getting path for volume");
     let (mountpoint, _) = read_repo(&name, &state)
         .await
         .context("Getting repo info for path acquisition")?;
 
+    debug!(name, mountpoint = format!("{:?}", mountpoint); "repo path information");
     Ok(MountPoint { mountpoint })
 }
 
@@ -95,6 +95,8 @@ pub async fn get_handler(
     let (mountpoint, status) = read_repo(&name, &state)
         .await
         .context("Getting repo info for volume information")?;
+
+    debug!(name, status, mountpoint = kv::Value::from_debug(&mountpoint); "repo information");
 
     Ok(GetResponse {
         volume: GetMountPoint {
@@ -136,6 +138,8 @@ pub async fn list_handler(State(state): State<GitvolState>) -> PluginResult<List
             mountpoint: Some(path.clone()),
         })
         .collect();
+
+    debug!(count = volumes.len(); "volumes list");
 
     Ok(ListResponse { volumes })
 }

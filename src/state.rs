@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use log::kv::{ToValue, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
@@ -35,6 +36,12 @@ pub enum RepoStatus {
     Created,
     Clonning,
     Ready,
+}
+
+impl ToValue for RepoStatus {
+    fn to_value(&self) -> Value {
+        Value::from_debug(self)
+    }
 }
 
 #[derive(Debug)]

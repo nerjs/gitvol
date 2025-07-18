@@ -1,11 +1,13 @@
 mod handlers;
+mod macros;
 mod state;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use axum::{Router, routing::post, serve};
+use log::info;
 use tokio::net::TcpListener;
-use tracing::info;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+// use tracing::info;
+// use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     handlers::{
@@ -31,13 +33,9 @@ fn create_app(state: GitvolState) -> Router {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
+async fn main() -> anyhow::Result<()> {
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Debug)
         .init();
 
     let volumes_dir = std::env::current_dir()

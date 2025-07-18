@@ -8,9 +8,9 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use axum::{Json, extract::State};
+use log::{debug, kv};
 use serde::Deserialize;
 use tokio::fs;
-use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RawRepo {
@@ -58,13 +58,15 @@ pub async fn create_handler(
     let repo = prepare_opts(opts).await?;
     let hash = repo.hash();
 
+    debug!(name, hash, url = repo.url, branch = repo.branch; "create volume draft");
+
     match volumes.get(&name) {
         Some(volume) => {
             ensure_cond!(
                 volume.hash == hash,
                 "The repository settings are not the same as previously set"
             );
-            debug!("volume {} was created earlier", name);
+            debug!(name; "volume was created earlier");
         }
         None => {
             let path = state.path.join(&hash);
@@ -75,7 +77,7 @@ pub async fn create_handler(
                 repo,
             };
             volumes.insert(name.clone(), volume);
-            debug!("volume '{}' was created", name);
+            debug!(name; "volume was created");
         }
     }
 
@@ -83,25 +85,25 @@ pub async fn create_handler(
 }
 
 async fn clear_volume(name: &str, state: &GitvolState) -> Result<()> {
-    debug!("Deleting all data volume '{}'", name);
+    debug!(name; "Deleting all data volume");
     let mut volumes = state.volumes.write().await;
 
     let Some(Volume { path, hash, .. }) = volumes.get(name) else {
-        debug!("Nothing to delete. volume '{}' does not exist", name);
+        debug!(name; "Nothing to delete. volume does not exist");
         return Ok(());
     };
     let mut repos = state.repos.write().await;
     repos.remove(hash);
 
     if path.exists() {
-        debug!("Deleting the ‘{:?}’ directory for volume '{}'", path, name);
+        debug!(name, path = kv::Value::from_debug(path); "Deleting the ‘{:?}’ directory for volume '{}'", path, name);
         fs::remove_dir_all(path)
             .await
             .with_context(|| format!("remove volume '{}' dir", &name))?;
     }
 
     volumes.remove(name);
-    debug!("All data for volume ‘{}’ has been deleted", name);
+    debug!(name; "All data for volume has been deleted");
 
     Ok(())
 }
@@ -110,10 +112,12 @@ pub async fn remove_handler(
     State(state): State<GitvolState>,
     Json(Named { name }): Json<Named>,
 ) -> PluginResult<Empty> {
-    debug!("attempt to remove volume named {}", name);
+    debug!(name; "attempt to remove volume");
     clear_volume(&name, &state)
         .await
         .context("clear all data")?;
+
+    debug!(name; "volume was removed");
 
     Ok(Empty)
 }

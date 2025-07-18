@@ -4,8 +4,8 @@ use axum::{
     http::{Response, StatusCode},
     response::IntoResponse,
 };
+use log::error;
 use serde_json::json;
-use tracing::error;
 
 pub struct PluginError(pub anyhow::Error);
 
