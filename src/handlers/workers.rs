@@ -55,6 +55,7 @@ pub async fn create_handler(
 ) -> PluginResult<Empty> {
     debug!("attempt to create volume named {}", name);
     let mut volumes = state.volumes.write().await;
+    let base_path = state.base_path.read().await;
     let repo = prepare_opts(opts).await?;
     let hash = repo.hash();
 
@@ -69,7 +70,7 @@ pub async fn create_handler(
             debug!(name; "volume was created earlier");
         }
         None => {
-            let path = state.path.join(&hash);
+            let path = base_path.join(&hash);
             let volume = Volume {
                 hash,
                 name: name.clone(),

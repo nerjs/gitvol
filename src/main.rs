@@ -1,13 +1,12 @@
 mod handlers;
 mod macros;
+mod middlewares;
 mod state;
 
 use anyhow::Context;
-use axum::{Router, routing::post, serve};
+use axum::{Router, middleware, routing::post, serve};
 use log::info;
 use tokio::net::TcpListener;
-// use tracing::info;
-// use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     handlers::{
@@ -15,20 +14,28 @@ use crate::{
         info::{capabilities_handler, get_handler, list_handler, path_handler},
         workers::{create_handler, mount_handler, remove_handler, unmount_handler},
     },
+    middlewares::save_middleware,
     state::GitvolState,
 };
 
 fn create_app(state: GitvolState) -> Router {
-    Router::new()
+    let router_wit_save_middleware = Router::new()
         .route("/Plugin.Activate", post(activate_plugin))
-        .route("/VolumeDriver.Capabilities", post(capabilities_handler))
-        .route("/VolumeDriver.Get", post(get_handler))
-        .route("/VolumeDriver.List", post(list_handler))
-        .route("/VolumeDriver.Path", post(path_handler))
         .route("/VolumeDriver.Create", post(create_handler))
         .route("/VolumeDriver.Remove", post(remove_handler))
         .route("/VolumeDriver.Mount", post(mount_handler))
         .route("/VolumeDriver.Unmount", post(unmount_handler))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            save_middleware,
+        ));
+
+    Router::new()
+        .route("/VolumeDriver.Capabilities", post(capabilities_handler))
+        .route("/VolumeDriver.Get", post(get_handler))
+        .route("/VolumeDriver.List", post(list_handler))
+        .route("/VolumeDriver.Path", post(path_handler))
+        .merge(router_wit_save_middleware)
         .with_state(state)
 }
 
