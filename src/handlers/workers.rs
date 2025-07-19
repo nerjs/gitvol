@@ -3,8 +3,7 @@ use super::{
     shared_structs::{Empty, MountPoint, Named, NamedWID},
 };
 use crate::{
-    bail_cond, ensure_cond,
-    state::{GitvolState, Repo, Volume},
+    bail_into, ensure_into, state::{GitvolState, Repo, Volume}
 };
 use anyhow::{Context, Result};
 use axum::{Json, extract::State};
@@ -33,11 +32,11 @@ async fn prepare_opts(opts: Option<RawRepo>) -> Result<Repo> {
         updatable,
     }) = opts
     else {
-        bail_cond!("url option is required");
+        bail_into!("url option is required");
     };
 
     let Some(url) = url else {
-        bail_cond!("url option is required");
+        bail_into!("url option is required");
     };
 
     let updatable = updatable.unwrap_or(false);
@@ -62,7 +61,7 @@ pub async fn create_handler(
 
     match volumes.get(&name) {
         Some(volume) => {
-            ensure_cond!(
+            ensure_into!(
                 volume.hash == hash,
                 "The repository settings are not the same as previously set"
             );
@@ -127,12 +126,6 @@ pub async fn mount_handler(
     Json(req): Json<NamedWID>,
 ) -> PluginResult<MountPoint> {
     debug!("mount volume: {req:?}");
-
-    if true {
-        bail_cond!("sss");
-    }
-
-    ensure_cond!(1 == 1 && 2 == 2 || 0 != 2, "req {}", 1);
 
     Ok(MountPoint {
         mountpoint: Some("/ll".into()),
