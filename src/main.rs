@@ -7,8 +7,6 @@ use axum::{Router, routing::post, serve};
 use log::info;
 use tokio::net::TcpListener;
 
-
-
 use crate::{
     handlers::{
         activate::activate_plugin,

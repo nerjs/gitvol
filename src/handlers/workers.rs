@@ -195,7 +195,9 @@ pub async fn mount_handler(
 async fn trying_remove_path(name: &str, path: &PathBuf) -> Result<()> {
     if path.exists() {
         debug!(name, path = Value::from_debug(path); "remove repo path");
-        fs::remove_dir_all(path).await.context("failed remove repo path")?;
+        fs::remove_dir_all(path)
+            .await
+            .context("failed remove repo path")?;
     }
     Ok(())
 }
@@ -211,16 +213,15 @@ pub async fn unmount_handler(
         bail_into!("volume named '{}' not found", name);
     };
 
-
     debug!(id, name; "clear container info");
 
     let count = {
-    let repos = state.repos.read().await;
-    let Some(repo_info) = repos.get(hash) else {
-        warn!(name; "repo info not found");
-        trying_remove_path(&name, &path).await?;
-        return Ok(Empty);
-    };
+        let repos = state.repos.read().await;
+        let Some(repo_info) = repos.get(hash) else {
+            warn!(name; "repo info not found");
+            trying_remove_path(&name, &path).await?;
+            return Ok(Empty);
+        };
 
         let mut repo_info = repo_info.write().await;
         repo_info.containers.remove(&id);
@@ -233,7 +234,6 @@ pub async fn unmount_handler(
         repos.remove(hash);
         trying_remove_path(&name, &path).await?;
     }
-    
 
     Ok(Empty)
 }
