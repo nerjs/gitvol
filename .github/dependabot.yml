@@ -22,9 +22,13 @@ updates:
       #     - tempfile
       logging:
         patterns:
-          - tracing-subscriber
-          - tracing
+          - env_logger
+          - log
       infrastructure:
         patterns:
           - tokio
           - anyhow
+      serde:
+        patterns:
+          - serde
+          - serde_json
