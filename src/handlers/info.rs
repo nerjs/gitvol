@@ -4,7 +4,7 @@ use super::{
     result::PluginResult,
     shared_structs::{MountPoint, Named},
 };
-use crate::state::{GitvolState, RepoStatus, Volume};
+use crate::state::{GitvolState, RepoStatus, Volume2};
 use anyhow::{Context, Result};
 use axum::{
     Json,
@@ -23,9 +23,9 @@ pub async fn capabilities_handler() -> impl IntoResponse {
 
 async fn read_repo(name: &str, state: &GitvolState) -> Result<(Option<PathBuf>, RepoStatus)> {
     debug!(name; "Getting repo info.");
-    let (volumes, repos) = join!(state.volumes.read(), state.repos.read());
+    let (volumes, repos) = join!(state.volumes2.read(), state.repos.read());
 
-    let Volume { path, hash, .. } = volumes.get(name).ok_or_else(|| {
+    let Volume2 { path, hash, .. } = volumes.get(name).ok_or_else(|| {
         anyhow::anyhow!(
             "volume named {} has been deleted or has not yet been created",
             &name
@@ -129,11 +129,11 @@ impl IntoResponse for ListResponse {
 
 pub async fn list_handler(State(state): State<GitvolState>) -> PluginResult<ListResponse> {
     debug!("Getting the list of volumes");
-    let volumes = state.volumes.read().await;
+    let volumes = state.volumes2.read().await;
     let volumes: Vec<ListMountPoint> = volumes
         .values()
         .into_iter()
-        .map(|Volume { name, path, .. }: &Volume| ListMountPoint {
+        .map(|Volume2 { name, path, .. }: &Volume2| ListMountPoint {
             name: name.clone(),
             mountpoint: Some(path.clone()),
         })

@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     bail_into, ensure_into, git,
-    state::{GitvolState, Repo, RepoInfo, RepoStatus, Volume},
+    state::{GitvolState, Repo, RepoInfo, RepoStatus, Volume2},
 };
 use anyhow::{Context, Result};
 use axum::{Json, extract::State};
@@ -58,7 +58,7 @@ pub async fn create_handler(
     Json(RawCreateRequest { name, opts }): Json<RawCreateRequest>,
 ) -> PluginResult<Empty> {
     debug!("attempt to create volume named {}", name);
-    let mut volumes = state.volumes.write().await;
+    let mut volumes = state.volumes2.write().await;
     let repo = prepare_opts(opts).await?;
     let hash = repo.hash();
 
@@ -74,7 +74,7 @@ pub async fn create_handler(
         }
         None => {
             let path = state.path.join(&hash);
-            let volume = Volume {
+            let volume = Volume2 {
                 hash,
                 name: name.clone(),
                 path,
@@ -90,9 +90,9 @@ pub async fn create_handler(
 
 async fn clear_volume(name: &str, state: &GitvolState) -> Result<()> {
     debug!(name; "Deleting all data volume");
-    let mut volumes = state.volumes.write().await;
+    let mut volumes = state.volumes2.write().await;
 
-    let Some(Volume { path, hash, .. }) = volumes.get(name) else {
+    let Some(Volume2 { path, hash, .. }) = volumes.get(name) else {
         debug!(name; "Nothing to delete. volume does not exist");
         return Ok(());
     };
@@ -131,9 +131,9 @@ pub async fn mount_handler(
     Json(NamedWID { name, id }): Json<NamedWID>,
 ) -> PluginResult<MountPoint> {
     debug!(name, id; "trying to mount the volume");
-    let volumes = state.volumes.read().await;
+    let volumes = state.volumes2.read().await;
 
-    let Some(Volume {
+    let Some(Volume2 {
         path, hash, repo, ..
     }) = volumes.get(&name)
     else {
@@ -207,9 +207,9 @@ pub async fn unmount_handler(
     Json(NamedWID { name, id }): Json<NamedWID>,
 ) -> PluginResult<Empty> {
     debug!(name, id; "trying to unmount the volume");
-    let volumes = state.volumes.read().await;
+    let volumes = state.volumes2.read().await;
 
-    let Some(Volume { path, hash, .. }) = volumes.get(&name) else {
+    let Some(Volume2 { path, hash, .. }) = volumes.get(&name) else {
         bail_into!("volume named '{}' not found", name);
     };
 

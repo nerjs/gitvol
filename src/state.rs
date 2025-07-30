@@ -24,7 +24,7 @@ impl Repo {
 }
 
 #[derive(Debug, Clone)]
-pub struct Volume {
+pub struct Volume2 {
     pub name: String,
     pub path: PathBuf,
     pub hash: String,
@@ -52,7 +52,7 @@ pub struct RepoInfo {
 #[derive(Debug, Clone)]
 pub struct GitvolState {
     pub path: PathBuf,
-    pub volumes: Arc<RwLock<HashMap<String, Volume>>>,
+    pub volumes2: Arc<RwLock<HashMap<String, Volume2>>>,
     pub repos: Arc<RwLock<HashMap<String, Arc<RwLock<RepoInfo>>>>>,
 }
 
@@ -60,7 +60,7 @@ impl GitvolState {
     pub fn new(path: PathBuf) -> Self {
         Self {
             path,
-            volumes: Arc::new(RwLock::new(HashMap::new())),
+            volumes2: Arc::new(RwLock::new(HashMap::new())),
             repos: Arc::new(RwLock::new(HashMap::new())),
         }
     }
