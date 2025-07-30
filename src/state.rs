@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 pub struct Repo {
     pub url: String,
     pub branch: Option<String>,
-    pub updatable: bool,
+    pub refetch: bool,
 }
 
 impl Repo {
@@ -34,8 +34,7 @@ pub struct Volume {
 #[derive(Debug, Serialize, Clone, PartialEq)]
 pub enum RepoStatus {
     Created,
-    Clonning,
-    Ready,
+    Clonned,
 }
 
 impl ToValue for RepoStatus {

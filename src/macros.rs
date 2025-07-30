@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! bail_into {
     ($($arg:tt)+) => {
-        return Err(anyhow::anyhow!($($arg)*).into());
+        return Err(anyhow::anyhow!($($arg)*).into())
     };
 }
 #[macro_export]
