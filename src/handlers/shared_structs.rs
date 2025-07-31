@@ -7,6 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[derive(Clone)]
 pub struct Empty;
 
@@ -40,5 +41,18 @@ pub struct MountPoint {
 impl IntoResponse for MountPoint {
     fn into_response(self) -> Response {
         Json(self).into_response()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    impl Named {
+        pub fn new(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+            }
+        }
     }
 }

@@ -11,8 +11,9 @@ use tokio::net::TcpListener;
 use crate::{
     handlers::{
         activate::activate_plugin,
+        creating::{create_handler, remove_handler},
         info::{capabilities_handler, get_handler, list_handler, path_handler},
-        workers::{create_handler, mount_handler, remove_handler, unmount_handler},
+        workers::{mount_handler, unmount_handler},
     },
     state::GitvolState,
 };

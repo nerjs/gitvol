@@ -13,10 +13,10 @@ use axum::{
 };
 use log::{debug, kv};
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::path::PathBuf;
 
-pub async fn capabilities_handler() -> impl IntoResponse {
+pub async fn capabilities_handler() -> Json<Value> {
     debug!("Retrieving plugin capabilities");
     Json(json!({ "Capabilities": { "Scope": "global" } }))
 }
@@ -78,6 +78,7 @@ pub async fn list_handler(State(state): State<GitvolState>) -> PluginResult<List
     Ok(ListResponse { volumes })
 }
 
+#[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetMountPoint {
@@ -99,6 +100,7 @@ impl IntoResponse for GetResponse {
     }
 }
 
+#[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ListMountPoint {
@@ -116,5 +118,135 @@ pub struct ListResponse {
 impl IntoResponse for ListResponse {
     fn into_response(self) -> Response {
         Json(self).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::state::Repo;
+
+    use super::*;
+
+    const VOLUME_NAME: &str = "volume_name";
+    const REPO_URL: &str = "https://example.com/repo.git";
+
+    #[tokio::test]
+    async fn capabilities_handler_success() {
+        let Json(value) = capabilities_handler().await;
+        assert_eq!(value, json!({ "Capabilities": { "Scope": "global" } }));
+    }
+
+    #[tokio::test]
+    async fn path_handler_success() {
+        let state = GitvolState::new("/tmp".into());
+        _ = state
+            .create(VOLUME_NAME, Repo::new(REPO_URL))
+            .await
+            .unwrap();
+        state
+            .set_path(VOLUME_NAME, "/tmp/test_volume")
+            .await
+            .unwrap();
+
+        let request = Named::new(VOLUME_NAME);
+        let result = path_handler(State(state), Json(request)).await;
+
+        assert!(result.is_ok());
+        let mount_point = result.unwrap();
+        assert_eq!(
+            mount_point.mountpoint,
+            Some(PathBuf::from("/tmp/test_volume"))
+        );
+    }
+
+    #[tokio::test]
+    async fn path_handler_non_existent_volume() {
+        let state = GitvolState::new("/tmp".into());
+
+        let request = Named::new("non_existent_volume");
+
+        let result = path_handler(State(state), Json(request)).await;
+
+        assert!(result.is_ok());
+        let mount_point = result.unwrap();
+        assert_eq!(mount_point.mountpoint, None);
+    }
+
+    #[tokio::test]
+    async fn get_handler_success() {
+        let state = GitvolState::new("/tmp".into());
+        _ = state
+            .create(VOLUME_NAME, Repo::new(REPO_URL))
+            .await
+            .unwrap();
+        state
+            .set_path(VOLUME_NAME, "/tmp/test_volume")
+            .await
+            .unwrap();
+
+        let request = Named::new(VOLUME_NAME);
+
+        let result = get_handler(State(state), Json(request)).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(
+            response.volume,
+            GetMountPoint {
+                name: VOLUME_NAME.to_string(),
+                mountpoint: Some(PathBuf::from("/tmp/test_volume")),
+                status: RepoStatus::Created,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn get_handler_non_existent_volume() {
+        let state = GitvolState::new("/tmp".into());
+
+        let request = Named::new(VOLUME_NAME);
+
+        let result = get_handler(State(state), Json(request)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn list_handler_with_volumes() {
+        let second_volume_name = format!("{}_2", VOLUME_NAME);
+        let state = GitvolState::new("/tmp".into());
+        _ = state
+            .create(VOLUME_NAME, Repo::new(REPO_URL))
+            .await
+            .unwrap();
+        _ = state
+            .create(&second_volume_name, Repo::new(REPO_URL))
+            .await
+            .unwrap();
+        state
+            .set_path(VOLUME_NAME, "/tmp/test_volume")
+            .await
+            .unwrap();
+
+        let result = list_handler(State(state)).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.volumes.len(), 2);
+
+        assert!(response.volumes.contains(&ListMountPoint {
+            name: VOLUME_NAME.to_string(),
+            mountpoint: Some(PathBuf::from("/tmp/test_volume")),
+        }));
+        assert!(response.volumes.contains(&ListMountPoint {
+            name: second_volume_name,
+            mountpoint: None,
+        }));
+    }
+
+    #[tokio::test]
+    async fn list_handler_empty() {
+        let state = GitvolState::new("/tmp".into());
+        let result = list_handler(State(state)).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.volumes.is_empty());
     }
 }

@@ -7,6 +7,7 @@ use axum::{
 use log::error;
 use serde_json::json;
 
+#[derive(Debug)]
 pub struct PluginError(pub anyhow::Error);
 
 impl<E> From<E> for PluginError
