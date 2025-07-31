@@ -1,11 +1,11 @@
-use std::path::PathBuf;
-
 use super::{
     result::PluginResult,
     shared_structs::{MountPoint, Named},
 };
-use crate::state::{GitvolState, RepoStatus, Volume2};
-use anyhow::{Context, Result};
+use crate::{
+    bail_into,
+    state::{GitvolState, RepoStatus},
+};
 use axum::{
     Json,
     extract::State,
@@ -14,56 +14,68 @@ use axum::{
 use log::{debug, kv};
 use serde::Serialize;
 use serde_json::json;
-use tokio::join;
+use std::path::PathBuf;
 
 pub async fn capabilities_handler() -> impl IntoResponse {
-    debug!("request capabilities");
+    debug!("Retrieving plugin capabilities");
     Json(json!({ "Capabilities": { "Scope": "global" } }))
-}
-
-async fn read_repo(name: &str, state: &GitvolState) -> Result<(Option<PathBuf>, RepoStatus)> {
-    debug!(name; "Getting repo info.");
-    let (volumes, repos) = join!(state.volumes2.read(), state.repos.read());
-
-    let Volume2 { path, hash, .. } = volumes.get(name).ok_or_else(|| {
-        anyhow::anyhow!(
-            "volume named {} has been deleted or has not yet been created",
-            &name
-        )
-    })?;
-
-    let repo_info = repos.get(hash);
-    let status = if let Some(repo_info) = repo_info {
-        let ri = repo_info.read().await;
-        ri.status.clone()
-    } else {
-        RepoStatus::Created
-    };
-
-    let mountpoint = if status == RepoStatus::Created {
-        None
-    } else {
-        Some(path.clone())
-    };
-
-    debug!(name, status, path = mountpoint.as_ref().map(|v| v.to_str());
-        "Successfully got repo info.",
-    );
-
-    Ok((mountpoint, status))
 }
 
 pub async fn path_handler(
     State(state): State<GitvolState>,
     Json(Named { name }): Json<Named>,
 ) -> PluginResult<MountPoint> {
-    debug!(name; "Getting path for volume");
-    let (mountpoint, _) = read_repo(&name, &state)
-        .await
-        .context("Getting repo info for path acquisition")?;
+    debug!(name; "Retrieving path for volume.");
+    let Some(volume) = state.read(&name).await else {
+        log::warn!(name; "Volume not found.");
+        return Ok(MountPoint { mountpoint: None });
+    };
 
-    debug!(name, mountpoint = format!("{:?}", mountpoint); "repo path information");
+    let mountpoint = volume.path.clone();
+
+    debug!(name, mountpoint = format!("{:?}", mountpoint); "Retrieved volume path information");
     Ok(MountPoint { mountpoint })
+}
+
+pub async fn get_handler(
+    State(state): State<GitvolState>,
+    Json(Named { name }): Json<Named>,
+) -> PluginResult<GetResponse> {
+    debug!(name; "Retrieving information for volume");
+    let Some(volume) = state.read(&name).await else {
+        bail_into!("Failed to find volume '{}'", name);
+    };
+
+    let mountpoint = volume.path.clone();
+
+    debug!(name, status = &volume.status, mountpoint = kv::Value::from_debug(&mountpoint); "Retrieved volume information");
+
+    Ok(GetResponse {
+        volume: GetMountPoint {
+            name,
+            mountpoint,
+            status: volume.status.clone(),
+        },
+    })
+}
+
+pub async fn list_handler(State(state): State<GitvolState>) -> PluginResult<ListResponse> {
+    debug!("Retrieving list of volumes");
+    let map_volumes = state.read_map().await;
+
+    let mut volumes: Vec<ListMountPoint> = Vec::with_capacity(map_volumes.len());
+
+    for volume in map_volumes.clone().into_values() {
+        let volume = volume.read().await;
+        volumes.push(ListMountPoint {
+            name: volume.name.clone(),
+            mountpoint: volume.path.clone(),
+        });
+    }
+
+    debug!(count = volumes.len(); "Retrieved volumes list");
+
+    Ok(ListResponse { volumes })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -87,26 +99,6 @@ impl IntoResponse for GetResponse {
     }
 }
 
-pub async fn get_handler(
-    State(state): State<GitvolState>,
-    Json(Named { name }): Json<Named>,
-) -> PluginResult<GetResponse> {
-    debug!("Getting information for volume with the name {}", name);
-    let (mountpoint, status) = read_repo(&name, &state)
-        .await
-        .context("Getting repo info for volume information")?;
-
-    debug!(name, status, mountpoint = kv::Value::from_debug(&mountpoint); "repo information");
-
-    Ok(GetResponse {
-        volume: GetMountPoint {
-            name,
-            mountpoint,
-            status,
-        },
-    })
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ListMountPoint {
@@ -125,21 +117,4 @@ impl IntoResponse for ListResponse {
     fn into_response(self) -> Response {
         Json(self).into_response()
     }
-}
-
-pub async fn list_handler(State(state): State<GitvolState>) -> PluginResult<ListResponse> {
-    debug!("Getting the list of volumes");
-    let volumes = state.volumes2.read().await;
-    let volumes: Vec<ListMountPoint> = volumes
-        .values()
-        .into_iter()
-        .map(|Volume2 { name, path, .. }: &Volume2| ListMountPoint {
-            name: name.clone(),
-            mountpoint: Some(path.clone()),
-        })
-        .collect();
-
-    debug!(count = volumes.len(); "volumes list");
-
-    Ok(ListResponse { volumes })
 }

@@ -86,7 +86,7 @@ impl GitvolState {
         }
     }
 
-    async fn read_map(&self) -> OwnedRwLockReadGuard<HashMap<String, Arc<RwLock<Volume>>>> {
+    pub async fn read_map(&self) -> OwnedRwLockReadGuard<HashMap<String, Arc<RwLock<Volume>>>> {
         self.volumes.clone().read_owned().await
     }
 
