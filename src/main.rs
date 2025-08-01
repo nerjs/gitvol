@@ -13,7 +13,7 @@ use crate::{
         activate::activate_plugin,
         creating::{create_handler, remove_handler},
         info::{capabilities_handler, get_handler, list_handler, path_handler},
-        workers::{mount_handler, unmount_handler},
+        mount_handler, unmount_handler,
     },
     state::GitvolState,
 };

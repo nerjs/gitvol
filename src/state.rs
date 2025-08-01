@@ -175,6 +175,14 @@ impl GitvolState {
         Some(guard)
     }
 
+    pub async fn try_write(&self, name: &str) -> Result<OwnedRwLockWriteGuard<Volume>> {
+        let Some(guard) = self.write(name).await else {
+            anyhow::bail!("Failed to find volume '{}'", name);
+        };
+
+        Ok(guard)
+    }
+
     pub async fn write_or_create(&self, name: &str, repo: Repo) -> OwnedRwLockWriteGuard<Volume> {
         let volume = self.get_or_create(name, repo).await;
         let guard = volume.write_owned().await;
