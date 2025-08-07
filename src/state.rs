@@ -5,11 +5,12 @@ use std::{
 };
 
 use anyhow::Result;
-use log::kv::{ToValue, Value};
+use log::kv;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, RwLockReadGuard};
+use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 
+#[cfg_attr(test, derive(PartialEq, Default))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Repo {
     pub url: String,
@@ -24,18 +25,11 @@ impl Repo {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Volume2 {
-    pub name: String,
-    pub path: PathBuf,
-    pub hash: String,
-    pub repo: Repo,
-}
-
 #[derive(Debug, Serialize, Clone, PartialEq)]
 pub enum RepoStatus {
     Created,
     Clonned,
+    Cleared,
 }
 
 #[derive(Debug, Clone)]
@@ -47,32 +41,15 @@ pub struct Volume {
     pub containers: HashSet<String>,
 }
 
-impl ToValue for RepoStatus {
-    fn to_value(&self) -> Value {
-        Value::from_debug(self)
+impl kv::ToValue for RepoStatus {
+    fn to_value(&self) -> kv::Value {
+        kv::Value::from_debug(self)
     }
 }
-
-pub struct VolumeReadGuard<'a> {
-    volume: RwLock<Volume>,
-    guard: RwLockReadGuard<'a, Volume>,
-}
-
-#[derive(Debug)]
-pub struct RepoInfo {
-    pub status: RepoStatus,
-    pub containers: HashSet<String>,
-}
-
-type LockVolume = Arc<RwLock<Volume>>;
-type LockMap = Arc<RwLock<HashMap<String, LockVolume>>>;
 
 #[derive(Debug, Clone)]
 pub struct GitvolState {
     pub path: PathBuf,
-    pub volumes2: Arc<RwLock<HashMap<String, Volume2>>>,
-    pub repos: Arc<RwLock<HashMap<String, Arc<RwLock<RepoInfo>>>>>,
-
     pub volumes: Arc<RwLock<HashMap<String, Arc<RwLock<Volume>>>>>,
 }
 
@@ -80,8 +57,6 @@ impl GitvolState {
     pub fn new(path: PathBuf) -> Self {
         Self {
             path,
-            volumes2: Arc::new(RwLock::new(HashMap::new())),
-            repos: Arc::new(RwLock::new(HashMap::new())),
 
             volumes: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -125,48 +100,10 @@ impl GitvolState {
         Ok(())
     }
 
-    async fn has(&self, name: &str) -> bool {
-        let volumes = self.read_map().await;
-        volumes.contains_key(name)
-    }
-
-    async fn get_or_create(&self, name: &str, repo: Repo) -> Arc<RwLock<Volume>> {
-        let mut volumes = self.write_map().await;
-        let volume = volumes.get(name);
-
-        match volume {
-            Some(volume) => volume.clone(),
-            None => {
-                let volume = Volume {
-                    name: name.to_string(),
-                    path: None,
-                    repo,
-                    status: RepoStatus::Created,
-                    containers: HashSet::new(),
-                };
-
-                let volume = Arc::new(RwLock::new(volume));
-                volumes.insert(name.to_string(), volume.clone());
-                volume
-            }
-        }
-    }
-
-    pub async fn remove(&self, name: &str) {
-        let mut volumes = self.write_map().await;
-        volumes.remove(name);
-    }
-
     pub async fn read(&self, name: &str) -> Option<OwnedRwLockReadGuard<Volume>> {
         let volume = self.get(name).await?;
         let guard = volume.read_owned().await;
         Some(guard)
-    }
-
-    pub async fn read_or_create(&self, name: &str, repo: Repo) -> OwnedRwLockReadGuard<Volume> {
-        let volume = self.get_or_create(name, repo).await;
-        let guard = volume.read_owned().await;
-        guard
     }
 
     pub async fn write(&self, name: &str) -> Option<OwnedRwLockWriteGuard<Volume>> {
@@ -174,68 +111,186 @@ impl GitvolState {
         let guard = volume.write_owned().await;
         Some(guard)
     }
-
-    pub async fn try_write(&self, name: &str) -> Result<OwnedRwLockWriteGuard<Volume>> {
-        let Some(guard) = self.write(name).await else {
-            anyhow::bail!("Failed to find volume '{}'", name);
-        };
-
-        Ok(guard)
-    }
-
-    pub async fn write_or_create(&self, name: &str, repo: Repo) -> OwnedRwLockWriteGuard<Volume> {
-        let volume = self.get_or_create(name, repo).await;
-        let guard = volume.write_owned().await;
-        guard
-    }
 }
 
 #[cfg(test)]
-mod test {
-    use anyhow::{Context, Result};
-
+pub mod test {
     use super::*;
 
-    impl Default for Repo {
-        fn default() -> Self {
-            Self {
-                url: Default::default(),
-                branch: Default::default(),
-                refetch: Default::default(),
-            }
-        }
-    }
+    pub const VOLUME_NAME: &str = "test_volume";
+    pub const REPO_URL: &str = "https://example.com/repo.git";
 
-    #[allow(dead_code)]
     impl Repo {
-        pub fn new(url: &str) -> Self {
+        pub fn stub() -> Self {
+            Self::url(REPO_URL)
+        }
+
+        fn url(url: &str) -> Self {
             Self {
                 url: url.to_string(),
                 ..Default::default()
             }
         }
+    }
 
-        pub fn with_url(mut self, url: &str) -> Self {
-            self.url = url.to_string();
-            self
-        }
-
-        pub fn with_branch(mut self, branch: &str) -> Self {
-            self.branch = Some(branch.into());
-            self
-        }
-
-        pub fn with_refetch(mut self, refetch: bool) -> Self {
-            self.refetch = refetch;
-            self
+    impl Volume {
+        fn new(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+                containers: HashSet::new(),
+                path: None,
+                repo: Repo::stub(),
+                status: RepoStatus::Cleared,
+            }
         }
     }
 
     impl GitvolState {
-        pub async fn set_path(&self, name: &str, path: impl Into<PathBuf>) -> Result<()> {
-            let mut volume = self.write(name).await.context("missing volume")?;
-            volume.path = Some(path.into());
-            Ok(())
+        pub fn stub() -> Self {
+            Self::new(std::env::temp_dir())
         }
+
+        pub async fn stub_with_create() -> Self {
+            let state = Self::stub();
+            state.create(VOLUME_NAME, Repo::stub()).await.unwrap();
+
+            state
+        }
+    }
+
+    #[tokio::test]
+    async fn create_new_state() {
+        let path = std::env::current_dir().unwrap().join("test");
+        let state = GitvolState::new(path.clone());
+
+        assert_eq!(path, state.path);
+
+        let volumes = state.read_map().await;
+        assert_eq!(volumes.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn create_and_read_new_volume() {
+        let state = GitvolState::stub();
+        let repo = Repo::stub();
+        state.create(VOLUME_NAME, repo.clone()).await.unwrap();
+
+        let volume = state.read(VOLUME_NAME).await.unwrap();
+
+        assert_eq!(volume.name, VOLUME_NAME);
+        assert_eq!(volume.path, None);
+        assert_eq!(volume.repo, repo);
+    }
+
+    #[tokio::test]
+    async fn read_nonexistent_volume() {
+        let state = GitvolState::stub();
+
+        let volume = state.read(VOLUME_NAME).await;
+        assert!(volume.is_none());
+    }
+
+    #[tokio::test]
+    async fn create_volume_with_empty_name() {
+        let state = GitvolState::stub();
+
+        let result = state.create("", Repo::stub()).await;
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("empty"));
+    }
+
+    #[tokio::test]
+    async fn create_volume_with_whitespace_name() {
+        let state = GitvolState::stub();
+
+        // trimmed volume name
+        let result = state.create("   ", Repo::stub()).await;
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("empty"));
+    }
+
+    #[tokio::test]
+    async fn create_duplicate_volume() {
+        let state = GitvolState::stub();
+
+        let result1 = state.create(VOLUME_NAME, Repo::stub()).await;
+        assert!(result1.is_ok());
+
+        let result2 = state.create(VOLUME_NAME, Repo::stub()).await;
+        assert!(result2.is_err());
+        let error = result2.unwrap_err();
+        assert!(error.to_string().contains("already exists"));
+    }
+
+    #[tokio::test]
+    async fn write_nonexistent_volume() {
+        let state = GitvolState::stub();
+
+        let volume = state.write(VOLUME_NAME).await;
+        assert!(volume.is_none());
+    }
+
+    #[tokio::test]
+    async fn write_existing_volume() {
+        let state = GitvolState::stub_with_create().await;
+
+        let mut volume = state.write(VOLUME_NAME).await.unwrap();
+        assert_eq!(volume.status, RepoStatus::Created);
+
+        volume.status = RepoStatus::Cleared;
+        drop(volume);
+
+        let volume = state.read(VOLUME_NAME).await.unwrap();
+        assert_eq!(volume.status, RepoStatus::Cleared);
+    }
+
+    #[tokio::test]
+    async fn read_map_empty() {
+        let state = GitvolState::stub();
+
+        let volumes = state.read_map().await;
+
+        assert_eq!(volumes.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn read_map_with_volumes() {
+        let state = GitvolState::stub_with_create().await;
+        let volumes = state.read_map().await;
+
+        assert_eq!(volumes.len(), 1);
+        assert!(volumes.contains_key(VOLUME_NAME));
+    }
+
+    #[tokio::test]
+    async fn write_map_add_volume() {
+        let state = GitvolState::stub();
+
+        let mut volumes = state.write_map().await;
+        volumes.insert(
+            VOLUME_NAME.to_string(),
+            Arc::new(RwLock::new(Volume::new(VOLUME_NAME))),
+        );
+        drop(volumes);
+
+        let volumes = state.read_map().await;
+
+        assert_eq!(volumes.len(), 1);
+        assert!(volumes.contains_key(VOLUME_NAME));
+    }
+
+    #[tokio::test]
+    async fn repo_hash_consistency() {
+        let repo1 = Repo::stub();
+        let repo2 = Repo::stub();
+        let repo3 = Repo::url("other_url");
+
+        assert_eq!(repo1.hash(), repo2.hash());
+        assert_ne!(repo1.hash(), repo3.hash());
+        assert_ne!(repo2.hash(), repo3.hash());
     }
 }

@@ -1,11 +1,24 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Output};
 
 use anyhow::{Context, Result};
 use log::{debug, kv::Value};
 use serde::{Deserialize, Serialize};
-use tokio::fs;
+use tokio::{fs, process::Command};
 
 use crate::state::Repo;
+
+pub async fn ensure_git_exists() -> Result<()> {
+    let git_path = run_command("which", "git")
+        .await
+        .context("Failed to locate git executable")?;
+    debug!(git_path;  "Located git executable");
+    let git_version = run_command("git", "--version")
+        .await
+        .context("Failed to retrieve git version")?;
+    debug!(version = format!("'{}'", git_version); "Verified git version");
+
+    Ok(())
+}
 
 #[derive(Serialize, Deserialize)]
 struct Info {
@@ -46,4 +59,40 @@ pub async fn refetch(path: &PathBuf) -> Result<()> {
     fs::write(info_path, json).await.context("update info")?;
 
     Ok(())
+}
+
+async fn run_command(cmd: &str, arg: &str) -> Result<String> {
+    let Output {
+        status,
+        stderr,
+        stdout,
+    } = Command::new(cmd)
+        .arg(arg)
+        .output()
+        .await
+        .with_context(|| format!("Failed to execute command '{} {}'", cmd, arg))?;
+
+    let stderr = String::from_utf8(stderr)
+        .context("Failed to parse stderr as UTF-8")?
+        .trim()
+        .to_string();
+    let stdout = String::from_utf8(stdout)
+        .context("Failed to parse stdout as UTF-8")?
+        .trim()
+        .to_string();
+
+    if !status.success() {
+        if stderr.is_empty() {
+            anyhow::bail!(
+                "Command '{} {}' exited with non-zero status: {}",
+                cmd,
+                arg,
+                status
+            )
+        } else {
+            anyhow::bail!("Command '{} {}' failed: {}", cmd, arg, stderr)
+        }
+    }
+
+    Ok(stdout)
 }
