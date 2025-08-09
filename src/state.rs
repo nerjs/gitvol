@@ -125,7 +125,7 @@ pub mod test {
             Self::url(REPO_URL)
         }
 
-        fn url(url: &str) -> Self {
+        pub fn url(url: &str) -> Self {
             Self {
                 url: url.to_string(),
                 ..Default::default()

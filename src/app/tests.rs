@@ -135,6 +135,12 @@ impl RawCreateRequest {
         opts.branch = Some(branch.to_string());
         self.with_opts(opts)
     }
+
+    fn with_refetch(self, refetch: bool) -> Self {
+        let mut opts = self.clone().opts.unwrap_or_default();
+        opts.refetch = Some(refetch);
+        self.with_opts(opts)
+    }
 }
 
 mod oneline {
@@ -155,6 +161,8 @@ mod oneline {
 
 mod by_state_reactions {
     use tokio::fs;
+
+    use crate::git::test::{TestRepo, is_git_dir};
 
     use super::*;
 
@@ -345,7 +353,13 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn successfully_mount_volume() {
-        let (state, _temp) = GitvolState::temp_with_volume().await;
+        let test_repo = TestRepo::get_or_create().await.unwrap();
+        let (state, _temp) = GitvolState::temp();
+
+        _ = state
+            .create(VOLUME_NAME, Repo::url(&test_repo.file))
+            .await
+            .unwrap();
         let request = NamedWID::stub();
 
         let result = mount_volume_to_container(State(state.clone()), Json(request.clone())).await;
@@ -355,6 +369,7 @@ mod by_state_reactions {
         let path = volume.path.unwrap();
 
         assert!(path.exists());
+        assert!(!is_git_dir(&path));
         assert!(volume.containers.contains(&request.id));
     }
 
@@ -388,6 +403,8 @@ mod by_state_reactions {
 }
 
 mod usecase {
+    use crate::git::test::{TestRepo, is_git_dir};
+
     use super::*;
 
     #[derive(Clone)]
@@ -565,12 +582,16 @@ mod usecase {
 
     #[tokio::test]
     async fn onetime_creating_and_mounting_volume() {
+        let test_repo = TestRepo::get_or_create().await.unwrap();
         let (state, _) = GitvolState::temp();
         assert_empty_list(&state).await;
 
-        _ = create_volume(state.req(), RawCreateRequest::stub_with_url().to_req())
-            .await
-            .unwrap();
+        _ = create_volume(
+            state.req(),
+            RawCreateRequest::stub().with_url(&test_repo.file).to_req(),
+        )
+        .await
+        .unwrap();
 
         assert_created_stub(&state).await;
 
@@ -589,6 +610,8 @@ mod usecase {
         )
         .await;
         assert!(mountpoint.exists());
+        assert!(!is_git_dir(&mountpoint));
+        assert!(test_repo.is_master(&mountpoint));
 
         remove_volume(state.req(), Named::stub().req())
             .await
@@ -600,6 +623,7 @@ mod usecase {
 
     #[tokio::test]
     async fn mount_and_unmount_pipeline() {
+        let test_repo = TestRepo::get_or_create().await.unwrap();
         let named_1 = NamedWID::stub();
         let named_2 = NamedWID::stub();
         let check_vol = CheckVol::stub();
@@ -607,9 +631,12 @@ mod usecase {
         let (state, _) = GitvolState::temp();
         assert_empty_list(&state).await;
 
-        _ = create_volume(state.req(), RawCreateRequest::stub_with_url().to_req())
-            .await
-            .unwrap();
+        _ = create_volume(
+            state.req(),
+            RawCreateRequest::stub().with_url(&test_repo.file).to_req(),
+        )
+        .await
+        .unwrap();
 
         assert_list(&state, 1, vec![check_vol.clone()]).await;
 
@@ -677,5 +704,112 @@ mod usecase {
         )
         .await;
         assert!(!mp1.mountpoint.exists());
+    }
+
+    #[tokio::test]
+    async fn create_and_mount_default_branch() {
+        let test_repo = TestRepo::get_or_create().await.unwrap();
+        let (state, _) = GitvolState::temp();
+
+        let _ = create_volume(
+            state.req(),
+            RawCreateRequest::stub().with_url(&test_repo.file).to_req(),
+        )
+        .await
+        .unwrap();
+        let Mp { mountpoint } = mount_volume_to_container(state.req(), NamedWID::stub().to_req())
+            .await
+            .unwrap();
+
+        assert!(!is_git_dir(&mountpoint));
+        assert!(test_repo.is_master(&mountpoint));
+    }
+
+    #[tokio::test]
+    async fn create_and_mount_specific_branch() {
+        let test_repo = TestRepo::get_or_create().await.unwrap();
+        let (state, _) = GitvolState::temp();
+
+        let _ = create_volume(
+            state.req(),
+            RawCreateRequest::stub()
+                .with_url(&test_repo.file)
+                .with_branch(&test_repo.develop)
+                .to_req(),
+        )
+        .await
+        .unwrap();
+        let Mp { mountpoint } = mount_volume_to_container(state.req(), NamedWID::stub().to_req())
+            .await
+            .unwrap();
+
+        assert!(!is_git_dir(&mountpoint));
+        assert!(test_repo.is_develop(&mountpoint));
+    }
+
+    #[tokio::test]
+    async fn create_and_mount_tag() {
+        let test_repo = TestRepo::get_or_create().await.unwrap();
+        let (state, _) = GitvolState::temp();
+
+        let _ = create_volume(
+            state.req(),
+            RawCreateRequest::stub()
+                .with_url(&test_repo.file)
+                .with_tag(&test_repo.tag)
+                .to_req(),
+        )
+        .await
+        .unwrap();
+        let Mp { mountpoint } = mount_volume_to_container(state.req(), NamedWID::stub().to_req())
+            .await
+            .unwrap();
+
+        assert!(!is_git_dir(&mountpoint));
+        assert!(test_repo.is_tag(&mountpoint));
+    }
+
+    #[tokio::test]
+    async fn create_refetchable_and_mount_twice() {
+        let test_repo = TestRepo::get_or_create().await.unwrap();
+        let (state, _) = GitvolState::temp();
+        let branch_name = format!("branch_{}", Uuid::new_v4().to_string());
+
+        test_repo.setup_temp_branch(&branch_name).await.unwrap();
+
+        let _ = create_volume(
+            state.req(),
+            RawCreateRequest::stub()
+                .with_url(&test_repo.file)
+                .with_branch(&branch_name)
+                .with_refetch(true)
+                .to_req(),
+        )
+        .await
+        .unwrap();
+        let Mp { mountpoint } = mount_volume_to_container(state.req(), NamedWID::stub().to_req())
+            .await
+            .unwrap();
+
+        assert!(is_git_dir(&mountpoint));
+        assert!(
+            !TestRepo::is_temp_changed(&mountpoint, &branch_name)
+                .await
+                .unwrap()
+        );
+
+        test_repo.change_temp_branch(&branch_name).await.unwrap();
+        let Mp {
+            mountpoint: mountpoint2,
+        } = mount_volume_to_container(state.req(), NamedWID::stub().to_req())
+            .await
+            .unwrap();
+
+        assert_eq!(mountpoint, mountpoint2);
+        assert!(
+            TestRepo::is_temp_changed(&mountpoint, &branch_name)
+                .await
+                .unwrap()
+        );
     }
 }

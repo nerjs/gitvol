@@ -46,8 +46,6 @@ pub(super) struct RawRepo {
     pub(super) url: Option<String>,
     pub(super) branch: Option<String>,
     pub(super) tag: Option<String>,
-    #[serde(rename = "ref")]
-    pub(super) reference: Option<String>,
     pub(super) refetch: Option<bool>,
 }
 
@@ -59,7 +57,6 @@ impl TryInto<Repo> for Option<RawRepo> {
             url,
             branch,
             tag,
-            reference,
             refetch,
         }) = self
         else {
@@ -72,15 +69,11 @@ impl TryInto<Repo> for Option<RawRepo> {
             anyhow::bail!("Invalid repository configuration: git URL is missing");
         };
 
-        let ref_count = [branch.is_some(), reference.is_some(), tag.is_some()]
-            .iter()
-            .filter(|x| **x)
-            .count();
-        if ref_count > 1 {
+        if branch.is_some() && tag.is_some() {
             anyhow::bail!("Only one of branch, tag, or ref parameters is allowed");
         }
 
-        let branch = branch.or(tag).or(reference);
+        let branch = branch.or(tag);
         let refetch = refetch.unwrap_or(false);
 
         debug!(url, branch, refetch; "Parsed repository options");

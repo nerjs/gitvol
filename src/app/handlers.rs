@@ -85,6 +85,8 @@ pub(super) async fn create_volume(
     let repo: Repo = opts
         .try_into()
         .context("Failed to parse repository options")?;
+    git::parse_url(&repo.url).context("Normalize git url")?;
+
     state
         .create(&name, repo)
         .await
