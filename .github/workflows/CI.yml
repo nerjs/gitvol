@@ -58,8 +58,8 @@ jobs:
 
 
       - name: Check Rust errors
-        # run: RUSTFLAGS="-D warnings" cargo check --all-targets --all-features
-        run: cargo check --all-targets --all-features
+        run: RUSTFLAGS="-D warnings" cargo check --all-targets --all-features
+        # run: cargo check --all-targets --all-features
 
   build-and-tests:
     runs-on: ubuntu-latest
