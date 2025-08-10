@@ -86,7 +86,6 @@ pub async fn ensure_git_exists() -> Result<()> {
     Ok(())
 }
 
-
 pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
     debug!(url = repo.url; "trying clonning repository.");
     anyhow::ensure!(!path.exists(), "path '{:?}' already exists", path);
@@ -102,7 +101,7 @@ pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
     let output = run_git_command(&"/".into(), raw_cmd)
         .await
         .context("Failed clone repository")?;
-    
+
     trace!("git output: {}", output);
 
     if !repo.refetch {
@@ -112,7 +111,7 @@ pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
     }
 
     debug!(url = repo.url; "Succefully clonning.");
-    
+
     Ok(())
 }
 

@@ -146,7 +146,9 @@ pub(super) async fn mount_volume_to_container(
     let path = state.path.join(volume.repo.hash());
     if path.exists() {
         debug!(name, id; "Repository directory already exists. Remooving");
-        fs::remove_dir_all(&path).await.context("Removing trash repositiry dir")?;
+        fs::remove_dir_all(&path)
+            .await
+            .context("Removing trash repositiry dir")?;
     }
     git::clone(&path, &volume.repo)
         .await
