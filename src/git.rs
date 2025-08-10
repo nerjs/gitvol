@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use git_url_parse::{GitUrl, Scheme};
-use log::{debug, kv::Value};
-use serde::{Deserialize, Serialize};
+use log::{debug, kv::Value, trace};
 use std::{ffi::OsStr, path::PathBuf, process::Output};
 use tokio::{fs, process::Command};
 
@@ -78,23 +77,18 @@ pub async fn ensure_git_exists() -> Result<()> {
     let git_path = run_command(&"/".into(), "which", vec!["git"])
         .await
         .context("Failed to locate git executable")?;
-    debug!(git_path;  "Located git executable");
+    debug!(git_path;  "Located git executable.");
     let git_version = run_git_command(&"/".into(), vec!["--version"])
         .await
         .context("Failed to retrieve git version")?;
-    debug!(version = format!("'{}'", git_version); "Verified git version");
+    debug!(version = format!("'{}'", git_version); "Verified git version.");
 
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
-struct Info {
-    repo: Repo,
-    count: u32,
-}
 
 pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
-    debug!(url = repo.url; "trying clonning repository");
+    debug!(url = repo.url; "trying clonning repository.");
     anyhow::ensure!(!path.exists(), "path '{:?}' already exists", path);
 
     let mut raw_cmd = vec!["clone", "--depth=1"];
@@ -105,9 +99,11 @@ pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
     raw_cmd.push(&repo.url);
     raw_cmd.push(path.to_str().context("Failed convert path to string")?);
 
-    _ = run_git_command(&"/".into(), raw_cmd)
+    let output = run_git_command(&"/".into(), raw_cmd)
         .await
         .context("Failed clone repository")?;
+    
+    trace!("git output: {}", output);
 
     if !repo.refetch {
         fs::remove_dir_all(path.join(".git"))
@@ -115,6 +111,8 @@ pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
             .context("Failed to remove .git directory. refetch is false.")?;
     }
 
+    debug!(url = repo.url; "Succefully clonning.");
+    
     Ok(())
 }
 

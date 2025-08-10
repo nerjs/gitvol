@@ -314,7 +314,7 @@ mod by_state_reactions {
         .await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Empty);
+        assert_eq!(result.unwrap(), Empty {});
 
         let volume = state.read(VOLUME_NAME).await.unwrap();
 
@@ -336,7 +336,7 @@ mod by_state_reactions {
         let result = remove_volume(State(state.clone()), Named::stub().req()).await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Empty);
+        assert_eq!(result.unwrap(), Empty {});
 
         let volume = state.read(VOLUME_NAME).await;
         assert!(volume.is_none());

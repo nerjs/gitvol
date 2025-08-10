@@ -1,4 +1,3 @@
-// #![allow(warnings)]
 mod app;
 mod git;
 mod macros;
@@ -7,7 +6,7 @@ mod state;
 use anyhow::Context;
 use axum::serve;
 use log::{debug, info};
-use tokio::{fs, net::TcpListener};
+use tokio::{fs, net::UnixListener};
 
 use crate::state::GitvolState;
 
@@ -32,12 +31,19 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Failed check git exists")?;
 
+    let socket_path = volumes_dir.join("plugin.sock");
+    if socket_path.exists() {
+        fs::remove_file(&socket_path)
+            .await
+            .context("remove old socket")?;
+    }
+
     let state = GitvolState::new(volumes_dir);
     let app = app::create(state);
-    let listener = TcpListener::bind("127.0.0.1:5432").await?;
-    info!("listening on {}", listener.local_addr().unwrap());
+    let listener = UnixListener::bind(socket_path)?;
+    info!("listening on {:?}", listener.local_addr().unwrap());
 
-    serve(listener, app).await?;
+    serve(listener, app.into_make_service()).await?;
 
     Ok(())
 }

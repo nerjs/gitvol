@@ -153,7 +153,7 @@ pub(super) struct ListResponse {
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[derive(Serialize)]
-pub(super) struct Empty;
+pub(super) struct Empty {}
 
 macro_rules! into_response {
     ($($name:ident),*) => {
