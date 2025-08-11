@@ -174,7 +174,7 @@ pub(super) async fn unmount_volume_by_container(
 
     volume.containers.remove(&id);
 
-    if volume.containers.len() > 0 {
+    if !volume.containers.is_empty() {
         debug!(name, id, container_count = volume.containers.len(); "Volume still in use by containers.");
         return Ok(Empty {});
     }

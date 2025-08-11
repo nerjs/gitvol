@@ -18,11 +18,6 @@ jobs:
           
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install stable rust tools
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
             
       - name: Cache Cargo target directory
         uses: actions/cache@v3
@@ -44,9 +39,6 @@ jobs:
           
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install stable rust tools
-        uses: dtolnay/rust-toolchain@stable
             
       - name: Cache Cargo target directory
         uses: actions/cache@v3
@@ -68,9 +60,6 @@ jobs:
           
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install stable rust tools
-        uses: dtolnay/rust-toolchain@stable
             
       - name: Cache Cargo target directory
         uses: actions/cache@v3

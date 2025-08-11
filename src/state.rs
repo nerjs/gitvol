@@ -42,7 +42,7 @@ pub struct Volume {
 }
 
 impl kv::ToValue for RepoStatus {
-    fn to_value(&self) -> kv::Value {
+    fn to_value(&self) -> kv::Value<'_> {
         kv::Value::from_debug(self)
     }
 }

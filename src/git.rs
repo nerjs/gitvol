@@ -14,14 +14,12 @@ pub fn parse_url(input: &str) -> Result<()> {
 
     let GitUrl { scheme, .. } = GitUrl::parse(input).context("Failed normalize url")?;
 
-    if vec![Scheme::Unspecified, Scheme::Ftp, Scheme::Ftps].contains(&scheme) {
+    if [Scheme::Unspecified, Scheme::Ftp, Scheme::Ftps].contains(&scheme) {
         anyhow::bail!("Unsupported url scheme {:?}", scheme);
     }
 
-    if cfg!(not(test)) {
-        if scheme == Scheme::File {
-            anyhow::bail!("Unsupported url scheme {:?}", scheme);
-        }
+    if cfg!(not(test)) && scheme == Scheme::File {
+        anyhow::bail!("Unsupported url scheme {:?}", scheme);
     }
 
     Ok(())

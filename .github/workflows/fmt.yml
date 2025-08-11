@@ -16,11 +16,6 @@ jobs:
           token: ${{ secrets.PUBLISH_TOKEN }}
           ref: ${{ github.ref_name }}
 
-      - name: Install stable rust tools
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
       - name: Run cargo fmt
         run: cargo fmt --all
 

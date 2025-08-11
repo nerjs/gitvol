@@ -173,13 +173,13 @@ into_response!(Mp, OptionalMp, GetResponse, ListResponse, Empty);
 // HELPERS
 
 pub(super) async fn remove_dir_if_exists(path: Option<PathBuf>) -> anyhow::Result<()> {
-    if let Some(path) = path {
-        if path.exists() {
-            debug!(path = kv::Value::from_debug(&path); "Attempting to remove directory");
-            fs::remove_dir_all(&path)
-                .await
-                .with_context(|| format!("Failed to remove directory '{:?}'", path))?;
-        }
+    if let Some(path) = path
+        && path.exists()
+    {
+        debug!(path = kv::Value::from_debug(&path); "Attempting to remove directory");
+        fs::remove_dir_all(&path)
+            .await
+            .with_context(|| format!("Failed to remove directory '{:?}'", path))?;
     }
 
     Ok(())
