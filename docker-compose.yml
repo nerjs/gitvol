@@ -1,0 +1,8 @@
+version: '3'
+services:
+    filebrowser:
+        volumes:
+            - './target:/srv'
+        ports:
+            - '8080:80'
+        image: 'filebrowser/filebrowser:latest'
