@@ -121,12 +121,19 @@ pub(super) struct OptionalMp {
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[derive(Serialize)]
+pub(super) struct MpStatus {
+    pub(super) status: RepoStatus,
+}
+
+#[cfg_attr(test, derive(Debug, PartialEq))]
+#[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub(super) struct GetMp {
     pub(super) name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) mountpoint: Option<PathBuf>,
-    pub(super) status: RepoStatus,
+    // TODO: format must be an object/ example: {"CreatedAt": "2025-08-24T19:44:31", "Size": "10GB", "Available": "5GB"}
+    pub(super) status: MpStatus,
 }
 
 #[cfg_attr(test, derive(Debug))]

@@ -1,0 +1,22 @@
+version: '3'
+services:
+    filebrowser:
+        volumes:
+            - 'ttt:/srv/ttt'
+            - 'zzz:/srv/zzz'
+        ports:
+            - '8080:80'
+        image: 'filebrowser/filebrowser:latest'
+        
+        
+volumes:
+  ttt:
+    driver: gitvol:latest
+    driver_opts:
+      url: https://github.com/nerjs/nlogs.git
+      tag: v2.4.4
+  zzz:
+    driver: gitvol:latest
+    driver_opts:
+      url: https://github.com/nerjs/nlogs.git
+      tag: v1.1.3

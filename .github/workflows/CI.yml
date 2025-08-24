@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - plugin
   pull_request:
     branches:
       - master

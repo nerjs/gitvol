@@ -1,0 +1,14 @@
+
+
+gitvol_socket/
+gitvol_volumes/
+
+tests/
+target/
+
+.git/
+.github/
+*.log
+tmp/
+build/
+build.sh
