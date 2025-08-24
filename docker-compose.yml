@@ -11,12 +11,12 @@ services:
         
 volumes:
   ttt:
-    driver: gitvol:latest
+    driver: nerjs/gitvol
     driver_opts:
       url: https://github.com/nerjs/nlogs.git
       tag: v2.4.4
   zzz:
-    driver: gitvol:latest
+    driver: nerjs/gitvol
     driver_opts:
       url: https://github.com/nerjs/nlogs.git
       tag: v1.1.3

@@ -7,7 +7,7 @@ print_err() {
     exit 1
 }
 
-PLUGIN_NAME="gitvol"
+PLUGIN_NAME="nerjs/gitvol"
 VERSION=$(cargo run --quiet -- --version | awk '{split($0,a," "); print a[2]}') || print_err "Failed to get version from cargo"
 BUILD_IMAGE="${PLUGIN_NAME}_rootfs_image"
 BUILD_PATH="$PWD/build"
