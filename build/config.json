@@ -1,0 +1,13 @@
+{
+  "description": "gitvol",
+  "documentation": "https://example.com/docs",
+  "interface": {
+    "types": ["docker.volumedriver/1.0"],
+    "socket": "gitvol.sock"
+  },
+  "entrypoint": ["/gitvol/gitvol", "-s", "/run/docker/plugins/gitvol.sock", "-m", "/gitvol/volumes"],
+  "PropagatedMount": "/gitvol/volumes",
+  "network": {
+    "type": "host"
+  }
+}

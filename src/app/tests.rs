@@ -209,7 +209,9 @@ mod by_state_reactions {
             GetMp {
                 name: VOLUME_NAME.to_string(),
                 mountpoint: Some(path),
-                status: RepoStatus::Created,
+                status: MpStatus {
+                    status: RepoStatus::Created
+                },
             }
         );
     }
@@ -477,9 +479,13 @@ mod usecase {
             let volume_from_get = get_response.unwrap().volume;
 
             assert_eq!(
-                status, volume_from_get.status,
+                MpStatus {
+                    status: status.clone()
+                },
+                volume_from_get.status,
                 "The volume status does not match the expected status. Current status: {:?}. Expected status: {:?}.",
-                volume_from_get.status, status
+                volume_from_get.status,
+                status
             );
 
             let mountpoint_from_list = list_item.unwrap().mountpoint.clone();

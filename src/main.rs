@@ -21,6 +21,8 @@ use crate::state::GitvolState;
 async fn main() -> anyhow::Result<()> {
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
+        .format_timestamp(None)
+        .target(env_logger::Target::Stdout)
         .init();
 
     let settings = Settings::parse().await.context("parsing arguments")?;

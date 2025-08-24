@@ -54,7 +54,9 @@ pub(super) async fn get_volume(
         volume: GetMp {
             name,
             mountpoint,
-            status: volume.status.clone(),
+            status: MpStatus {
+                status: volume.status.clone(),
+            },
         },
     })
 }
