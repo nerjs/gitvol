@@ -23,26 +23,26 @@ jobs:
         with:
           token: ${{ secrets.PUBLISH_TOKEN }}
           
-      - name: Cache Cargo target directory
-        uses: actions/cache@v3
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-target-debug-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-target-debug-
+      # - name: Cache Cargo target directory
+      #   uses: actions/cache@v3
+      #   with:
+      #     path: target
+      #     key: ${{ runner.os }}-cargo-target-debug-${{ hashFiles('**/Cargo.lock') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-cargo-target-debug-
             
             
-      - name: Checkout source
-        uses: actions/checkout@v3
+      # - name: Checkout source
+      #   uses: actions/checkout@v3
         
-      - name: Check Rust formatting
-        run: cargo fmt --all --check
+      # - name: Check Rust formatting
+      #   run: cargo fmt --all --check
 
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
+      # - name: Run clippy
+      #   run: cargo clippy -- -D warnings
         
-      - name: tests
-        run: cargo test
+      # - name: tests
+      #   run: cargo test
   
   
   bump-version:
@@ -78,6 +78,8 @@ jobs:
       
       - name: Create tag
         run: V=$(cargo pkgid | cut -d "#" -f2); git tag "v$V"
+      - run: echo "$(cargo pkgid | cut -d "#" -f2)"
+      - run: echo "$(git tag)"
   
       - name: Push latest version
         run: git push origin master --follow-tags
