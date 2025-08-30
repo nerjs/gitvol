@@ -1,4 +1,3 @@
-#![allow(warnings)]
 mod app;
 mod git;
 mod macros;
@@ -11,7 +10,7 @@ use axum::serve;
 use clap::Parser;
 use log::{
     debug, info,
-    kv::{self, ToValue},
+    kv::{self},
 };
 use tokio::{fs, net::UnixListener};
 
