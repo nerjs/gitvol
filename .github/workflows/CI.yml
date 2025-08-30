@@ -12,7 +12,7 @@ on:
 jobs:
   check-fmt:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip-CI]')"
+    if: "github.event.head_commit.message != 'Bump version'"
 
     steps:
           
@@ -23,9 +23,9 @@ jobs:
         uses: actions/cache@v3
         with:
           path: target
-          key: ${{ runner.os }}-cargo-target-check-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-target-debug-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-target-check-
+            ${{ runner.os }}-cargo-target-debug-
 
 
       - name: Check Rust formatting
@@ -47,9 +47,9 @@ jobs:
         uses: actions/cache@v3
         with:
           path: target
-          key: ${{ runner.os }}-cargo-target-check-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-target-debug-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-target-check-
+            ${{ runner.os }}-cargo-target-debug-
 
 
       - name: Check Rust errors
