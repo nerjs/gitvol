@@ -4,7 +4,6 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.98"
 axum = {version = "0.8.4", features = ["tower-log", "tokio"]}
 env_logger = { version = "0.11.8", features = ["kv", "color"] }
 log = { version = "0.4.27", features = ["kv", "kv_std"] }
@@ -18,6 +17,7 @@ clap = { version = "4.5.45", default-features = false, features = ["derive", "st
 # broken deps
 git-url-parse = "0.4.5"
 url = { version = "2.5.4" }
+thiserror = "2.0.16"
 
 [dev-dependencies]
 once_cell = "1.21.3"

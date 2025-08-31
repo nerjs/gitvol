@@ -1,47 +1,47 @@
 mod app;
 mod git;
 mod macros;
+mod result;
 mod state;
 
 use std::{fmt::Debug, os::unix::fs::FileTypeExt, path::PathBuf};
 
-use anyhow::{Context, Result};
 use axum::serve;
 use clap::Parser;
-use log::{
-    debug, info,
-    kv::{self},
-};
+use log::{debug, info, kv};
 use tokio::{fs, net::UnixListener};
 
-use crate::state::GitvolState;
+use crate::{
+    result::{Error, ErrorIoExt, Result},
+    state::GitvolState,
+};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .format_timestamp(None)
         .target(env_logger::Target::Stdout)
         .init();
 
-    let settings = Settings::parse().await.context("parsing arguments")?;
+    let settings = Settings::parse().await?;
 
-    git::ensure_git_exists()
-        .await
-        .context("Failed check git exists")?;
+    git::ensure_git_exists().await?;
 
     if settings.socket.exists() {
         fs::remove_file(&settings.socket)
             .await
-            .context("remove old socket")?;
+            .map_io_error(&settings.socket)?;
     }
 
     let state = GitvolState::new(settings.mount_path);
     let app = app::create(state);
-    let listener = UnixListener::bind(settings.socket)?;
+    let listener = UnixListener::bind(&settings.socket).map_io_error(&settings.socket)?;
     info!("listening on {:?}", listener.local_addr().unwrap());
 
-    serve(listener, app.into_make_service()).await?;
+    serve(listener, app.into_make_service())
+        .await
+        .map_io_error(&format!("serve: {:?}", settings.socket))?;
 
     Ok(())
 }
@@ -67,8 +67,7 @@ impl Settings {
         let args = Args::parse();
         debug!(args = kv::Value::from_debug(&args); "parsing cli args.");
 
-        let current_dir =
-            std::env::current_dir().context("Failed getting current dir for start settings.")?;
+        let current_dir = std::env::current_dir().map_io_error("current dir")?;
 
         let mut socket = args
             .socket
@@ -87,28 +86,31 @@ impl Settings {
         }
 
         if socket.exists() {
-            let socket_metadata = fs::metadata(socket.clone()).await?.file_type();
+            let socket_metadata = fs::metadata(socket.clone())
+                .await
+                .map_io_error(&socket)?
+                .file_type();
             if !socket_metadata.is_socket() {
-                anyhow::bail!("The path to the socket {:?} is not a socket.", socket);
+                return Err(Error::NoSocket(socket.clone()));
             }
             debug!("Socket already exists.");
         } else {
             let Some(socket_parent) = socket.parent() else {
-                anyhow::bail!("Incorrect socket path {socket:?}.");
+                return Err(Error::MissingSocketParent(socket.clone()));
             };
             debug!(socket_parent = kv::Value::from_debug(&socket_parent); "Trying to create socket parent dir.");
-            fs::create_dir_all(socket_parent)
+            fs::create_dir_all(&socket_parent)
                 .await
-                .context("create socket parent directory.")?;
+                .map_io_error(&socket_parent)?;
         }
 
         if mount_path.exists() {
-            anyhow::ensure!(mount_path.is_dir(), "Mounting path is not directory.");
+            return Err(Error::NoDirMountingPath(mount_path.clone()));
         } else {
             debug!(mount_path = kv::Value::from_debug(&mount_path); "Trying to create mount dir.");
             fs::create_dir_all(&mount_path)
                 .await
-                .context("create mounting directory.")?;
+                .map_io_error(&mount_path)?;
         }
 
         Ok(Self { socket, mount_path })

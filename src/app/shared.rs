@@ -1,31 +1,24 @@
 use std::path::PathBuf;
 
-use anyhow::Context;
-use axum::{Json, body::Body, http::StatusCode, response::IntoResponse};
+use axum::{Json, http::StatusCode, response::IntoResponse};
 use log::{debug, kv};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::fs;
 
-use crate::state::{Repo, RepoStatus};
+use crate::{
+    result::{Error, ErrorIoExt},
+    state::{Repo, RepoStatus},
+};
 
 // CORE
 
-#[derive(Debug)]
-pub(super) struct Error(anyhow::Error);
-impl<E> From<E> for Error
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(value: E) -> Self {
-        Self(value.into())
-    }
-}
-
 impl IntoResponse for Error {
-    fn into_response(self) -> axum::response::Response<Body> {
-        log::error!("{:?}", self.0);
-        (StatusCode::OK, Json(json!({"Err":format!("{}", self.0)}))).into_response()
+    fn into_response(self) -> axum::response::Response {
+        log::error!("Response error: {:?}", self);
+        let error = format!("{}", self);
+
+        (StatusCode::OK, Json(json!({"Err":error}))).into_response()
     }
 }
 
@@ -50,9 +43,9 @@ pub(super) struct RawRepo {
 }
 
 impl TryInto<Repo> for Option<RawRepo> {
-    type Error = anyhow::Error;
+    type Error = Error;
 
-    fn try_into(self) -> anyhow::Result<Repo> {
+    fn try_into(self) -> crate::result::Result<Repo> {
         let Some(RawRepo {
             url,
             branch,
@@ -60,17 +53,15 @@ impl TryInto<Repo> for Option<RawRepo> {
             refetch,
         }) = self
         else {
-            anyhow::bail!(
-                "Invalid repository configuration: no options provided, git URL is required"
-            );
+            return Err(Error::ParamsNoOptions);
         };
 
         let Some(url) = url else {
-            anyhow::bail!("Invalid repository configuration: git URL is missing");
+            return Err(Error::ParamsRequiredUrl);
         };
 
         if branch.is_some() && tag.is_some() {
-            anyhow::bail!("Only one of branch, tag, or ref parameters is allowed");
+            return Err(Error::ParamsSingleBranch);
         }
 
         let branch = branch.or(tag);
@@ -179,14 +170,12 @@ into_response!(Mp, OptionalMp, GetResponse, ListResponse, Empty);
 
 // HELPERS
 
-pub(super) async fn remove_dir_if_exists(path: Option<PathBuf>) -> anyhow::Result<()> {
+pub(super) async fn remove_dir_if_exists(path: Option<PathBuf>) -> crate::result::Result<()> {
     if let Some(path) = path
         && path.exists()
     {
         debug!(path = kv::Value::from_debug(&path); "Attempting to remove directory");
-        fs::remove_dir_all(&path)
-            .await
-            .with_context(|| format!("Failed to remove directory '{:?}'", path))?;
+        fs::remove_dir_all(&path).await.map_io_error(&path)?;
     }
 
     Ok(())

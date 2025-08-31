@@ -1,29 +1,20 @@
 use super::handlers::*;
 use super::shared::*;
+use crate::result::Result;
 use crate::state::{
-    GitvolState, Repo, RepoStatus, Volume,
+    GitvolState, Repo, RepoStatus,
     test::{REPO_URL, VOLUME_NAME},
 };
-use anyhow::Context;
 use axum::{Json, extract::State};
 use std::path::PathBuf;
 use tempfile::{Builder as TempBuilder, TempDir};
-use tokio::sync::OwnedRwLockWriteGuard;
 use uuid::Uuid;
 
 impl GitvolState {
-    pub async fn set_path(&self, name: &str, path: impl Into<PathBuf>) -> anyhow::Result<()> {
-        let mut volume = self.write(name).await.context("missing volume")?;
+    pub async fn set_path(&self, name: &str, path: impl Into<PathBuf>) -> Result<()> {
+        let mut volume = self.try_write(name).await?;
         volume.path = Some(path.into());
         Ok(())
-    }
-
-    pub async fn try_write(&self, name: &str) -> anyhow::Result<OwnedRwLockWriteGuard<Volume>> {
-        let Some(guard) = self.write(name).await else {
-            anyhow::bail!("Failed to find volume '{}' for write", name);
-        };
-
-        Ok(guard)
     }
 
     async fn stub_with_path(path: impl Into<PathBuf>) -> Self {

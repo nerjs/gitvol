@@ -1,25 +1,49 @@
-use anyhow::{Context, Result};
+use crate::result::{Error, Result};
 use git_url_parse::{GitUrl, Scheme};
 use log::{debug, kv::Value, trace};
-use std::{ffi::OsStr, path::PathBuf, process::Output};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    process::Output,
+};
 use tokio::{fs, process::Command};
 
 use crate::state::Repo;
 
+impl Error {
+    pub fn cmd<S, R>(command: &str, args: &[S], reason: R) -> Error
+    where
+        S: std::fmt::Debug + Clone,
+        R: std::fmt::Debug,
+    {
+        Error::Cmd {
+            reason: format!("{reason:?}"),
+            cmd: command.to_string(),
+            args: args.iter().map(|s| format!("{s:?}")).collect(),
+        }
+    }
+}
+
 pub fn parse_url(input: &str) -> Result<()> {
     let str_url = input.trim();
     if str_url.is_empty() {
-        anyhow::bail!("Url can not be empty");
+        return Err(Error::EmptyUrl);
     }
 
-    let GitUrl { scheme, .. } = GitUrl::parse(input).context("Failed normalize url")?;
+    let GitUrl { scheme, .. } = GitUrl::parse(input)?;
 
     if [Scheme::Unspecified, Scheme::Ftp, Scheme::Ftps].contains(&scheme) {
-        anyhow::bail!("Unsupported url scheme {:?}", scheme);
+        return Err(Error::UnsupportedUrlScheme {
+            scheme,
+            url: str_url.into(),
+        });
     }
 
     if cfg!(not(test)) && scheme == Scheme::File {
-        anyhow::bail!("Unsupported url scheme {:?}", scheme);
+        return Err(Error::UnsupportedUrlScheme {
+            scheme,
+            url: str_url.into(),
+        });
     }
 
     Ok(())
@@ -38,28 +62,18 @@ where
         .current_dir(current_dir)
         .output()
         .await
-        .with_context(|| format!("Failed to execute command '{} {:?}'", cmd, args))?;
+        .map_err(|e| Error::cmd(cmd, &args, e.kind()))?;
 
-    let stderr = String::from_utf8(stderr)
-        .context("Failed to parse stderr as UTF-8")?
-        .trim()
-        .to_string();
-    let stdout = String::from_utf8(stdout)
-        .context("Failed to parse stdout as UTF-8")?
-        .trim()
-        .to_string();
+    let stderr = String::from_utf8(stderr)?;
+    let stdout = String::from_utf8(stdout)?.trim().to_string();
 
     if !status.success() {
-        if stderr.is_empty() {
-            anyhow::bail!(
-                "Command '{} {:?}' exited with non-zero status: {}",
-                cmd,
-                args,
-                status
-            )
+        let error = if stderr.is_empty() {
+            Error::cmd(cmd, &args, format!("exited with non-zero status: {status}"))
         } else {
-            anyhow::bail!("Command '{} {:?}' failed: {}", cmd, args, stderr)
-        }
+            Error::cmd(cmd, &args, stderr)
+        };
+        return Err(error);
     }
 
     Ok(stdout)
@@ -72,21 +86,22 @@ where
 }
 
 pub async fn ensure_git_exists() -> Result<()> {
-    let git_path = run_command(&"/".into(), "which", vec!["git"])
-        .await
-        .context("Failed to locate git executable")?;
+    let git_path = run_command(&"/".into(), "which", vec!["git"]).await?;
     debug!(git_path;  "Located git executable.");
-    let git_version = run_git_command(&"/".into(), vec!["--version"])
-        .await
-        .context("Failed to retrieve git version")?;
+    let git_version = run_git_command(&"/".into(), vec!["--version"]).await?;
     debug!(version = format!("'{}'", git_version); "Verified git version.");
 
     Ok(())
 }
 
-pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
+pub async fn clone(path: &Path, repo: &Repo) -> Result<()> {
     debug!(url = repo.url; "trying clonning repository.");
-    anyhow::ensure!(!path.exists(), "path '{:?}' already exists", path);
+
+    if path.exists() {
+        return Err(Error::PathAlreadyExists {
+            path: path.to_path_buf(),
+        });
+    }
 
     let mut raw_cmd = vec!["clone", "--depth=1"];
     if let Some(branch) = &repo.branch {
@@ -94,18 +109,19 @@ pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
         raw_cmd.push(branch);
     }
     raw_cmd.push(&repo.url);
-    raw_cmd.push(path.to_str().context("Failed convert path to string")?);
+    raw_cmd.push(path.to_str().unwrap_or_default());
 
-    let output = run_git_command(&"/".into(), raw_cmd)
-        .await
-        .context("Failed clone repository")?;
+    let output = run_git_command(&"/".into(), raw_cmd).await?;
 
     trace!("git output: {}", output);
 
     if !repo.refetch {
         fs::remove_dir_all(path.join(".git"))
             .await
-            .context("Failed to remove .git directory. refetch is false.")?;
+            .map_err(|e| Error::RemoveDirectory {
+                kind: e.kind(),
+                reason: ".git directory".into(),
+            })?;
     }
 
     debug!(url = repo.url; "Succefully clonning.");
@@ -115,19 +131,20 @@ pub async fn clone(path: &PathBuf, repo: &Repo) -> Result<()> {
 
 pub async fn refetch(path: &PathBuf) -> Result<()> {
     debug!(path = Value::from_debug(path); "trying refetch repository");
-    anyhow::ensure!(path.exists(), "path {:?} not exists", path);
-    anyhow::ensure!(
-        path.join(".git").exists(),
-        "git directory {:?} not exists",
-        path
-    );
 
-    _ = run_git_command(path, vec!["fetch"])
-        .await
-        .context("Fetching repo")?;
-    _ = run_git_command(path, vec!["pull"])
-        .await
-        .context("Pulling repo")?;
+    if !path.exists() {
+        return Err(Error::PathNotExists { path: path.clone() });
+    }
+
+    let git_path = path.join(".git");
+    if !git_path.exists() {
+        return Err(Error::PathNotExists {
+            path: git_path.clone(),
+        });
+    }
+
+    _ = run_git_command(path, vec!["fetch"]).await?;
+    _ = run_git_command(path, vec!["pull"]).await?;
 
     Ok(())
 }
@@ -136,6 +153,8 @@ pub async fn refetch(path: &PathBuf) -> Result<()> {
 pub mod test {
     use once_cell::sync::Lazy;
     use std::str::FromStr;
+
+    use crate::result::ErrorIoExt;
 
     use super::*;
     use tempfile::{Builder, TempDir, tempdir};
@@ -186,9 +205,12 @@ pub mod test {
 
         pub async fn is_temp_changed(path: &PathBuf, branch_name: &str) -> Result<bool> {
             let file = path.join(Self::n_file(branch_name));
-            anyhow::ensure!(file.exists() && file.is_file(), "temp file not exists");
 
-            let content = fs::read(file).await.context("read temp file")?;
+            if !file.exists() || !file.is_file() {
+                return Err(Error::TestTmpNotExists { file });
+            }
+
+            let content = fs::read(&file).await.map_io_error(&file)?;
             let str_content = String::from_utf8(content)?;
             Ok(str_content == "changed")
         }
@@ -208,8 +230,7 @@ pub mod test {
                 &PathBuf::from_str("/").unwrap(),
                 vec!["clone", &self.file, path.to_str().unwrap()],
             )
-            .await
-            .context("Clone test.git")?;
+            .await?;
 
             Ok(())
         }
@@ -219,74 +240,54 @@ pub mod test {
                 &path,
                 vec!["config", "--local", "user.email", "test@example.com"],
             )
-            .await
-            .context("set git user email")?;
-            run_git_command(&path, vec!["config", "--local", "user.name", "Test User"])
-                .await
-                .context("set git user name")?;
+            .await?;
+            run_git_command(&path, vec!["config", "--local", "user.name", "Test User"]).await?;
 
             Ok(())
         }
 
         async fn add_and_commit(path: &PathBuf, message: &str) -> Result<()> {
-            run_git_command(&path, vec!["add", "."])
-                .await
-                .context("add changes")?;
-            run_git_command(&path, vec!["commit", "-m", message])
-                .await
-                .context("commit changes")?;
+            run_git_command(&path, vec!["add", "."]).await?;
+            run_git_command(&path, vec!["commit", "-m", message]).await?;
             Ok(())
         }
 
         async fn setup_temp_directory(&self) -> Result<(PathBuf, TempDir)> {
-            let temp = tempdir().context("create temp dir for setup temp branch")?;
+            let temp = tempdir().unwrap();
             let path = temp.path().join("worker");
-            self.clone_to(&path).await.context("clone to temp worker")?;
-            Self::credentials(&path)
-                .await
-                .context("git credentials for temp")?;
+            self.clone_to(&path).await?;
+            Self::credentials(&path).await?;
 
             Ok((path, temp))
         }
 
         pub async fn setup_temp_branch(&self, branch_name: &str) -> Result<()> {
-            let (path, _temp) = self.setup_temp_directory().await.context("Setup temp")?;
-            run_git_command(&path, vec!["checkout", "-b", branch_name])
-                .await
-                .context(format!("checkout temp before setup {}", branch_name))?;
+            let (path, _temp) = self.setup_temp_directory().await?;
+            run_git_command(&path, vec!["checkout", "-b", branch_name]).await?;
 
-            fs::write(path.join(Self::n_file(branch_name)), "setup")
+            let branch_path = path.join(Self::n_file(branch_name));
+            fs::write(&branch_path, "setup")
                 .await
-                .context("write setup info into temp file")?;
-            Self::add_and_commit(&path, "temp file")
-                .await
-                .context("setup temp file")?;
-            run_git_command(&path, vec!["push", "--set-upstream", "origin", branch_name])
-                .await
-                .context("push temp file")?;
+                .map_io_error(&branch_path)?;
+            Self::add_and_commit(&path, "temp file").await?;
+            run_git_command(&path, vec!["push", "--set-upstream", "origin", branch_name]).await?;
 
             Ok(())
         }
 
         pub async fn change_temp_branch(&self, branch_name: &str) -> Result<()> {
-            let (path, _temp) = self.setup_temp_directory().await.context("Setup temp")?;
+            let (path, _temp) = self.setup_temp_directory().await?;
 
-            run_git_command(&path, vec!["fetch"])
-                .await
-                .context("fetch changes before change temp")?;
+            run_git_command(&path, vec!["fetch"]).await?;
 
-            run_git_command(&path, vec!["checkout", branch_name])
+            run_git_command(&path, vec!["checkout", branch_name]).await?;
+
+            let branch_path = path.join(Self::n_file(branch_name));
+            fs::write(&branch_path, "changed")
                 .await
-                .context(format!("checkout temp before change {}", branch_name))?;
-            fs::write(path.join(Self::n_file(branch_name)), "changed")
-                .await
-                .context("change setup info into temp file")?;
-            Self::add_and_commit(&path, "temp file")
-                .await
-                .context("change temp file")?;
-            run_git_command(&path, vec!["push", "--set-upstream", "origin", branch_name])
-                .await
-                .context("push changed temp file")?;
+                .map_io_error(&branch_path)?;
+            Self::add_and_commit(&path, "temp file").await?;
+            run_git_command(&path, vec!["push", "--set-upstream", "origin", branch_name]).await?;
             Ok(())
         }
 
@@ -305,82 +306,63 @@ pub mod test {
 
             fs::create_dir(&source.path)
                 .await
-                .context("create test.git dir")?;
+                .map_io_error(&source.path)?;
             let worker = tmp.path().join("worker");
 
             run_git_command(
                 &source.path,
                 vec!["init", "--bare", "--initial-branch", &source.master],
             )
-            .await
-            .context("initialize test.git")?;
+            .await?;
 
-            source
-                .clone_to(&worker)
-                .await
-                .context("clone to setup worker")?;
+            source.clone_to(&worker).await?;
 
-            Self::credentials(&worker)
-                .await
-                .context("setup git credentials")?;
+            Self::credentials(&worker).await?;
 
-            fs::write(worker.join(source.tag_file()), source.tag.clone())
+            let worker_tag = worker.join(source.tag_file());
+            let worker_master = worker.join(source.master_file());
+            let worker_develop = worker.join(source.develop_file());
+
+            fs::write(&worker_tag, source.tag.clone())
                 .await
-                .context("create tag file")?;
-            Self::add_and_commit(&worker, "creating tag file")
-                .await
-                .context("set tag file")?;
+                .map_io_error(&worker_tag)?;
+            Self::add_and_commit(&worker, "creating tag file").await?;
             run_git_command(
                 &worker,
                 vec!["push", "--set-upstream", "origin", &source.master],
             )
-            .await
-            .context("push tag file")?;
-            run_git_command(&worker, vec!["tag", &source.tag])
-                .await
-                .context("create tag")?;
-            run_git_command(&worker, vec!["push", "origin", "--tags"])
-                .await
-                .context("push tags")?;
+            .await?;
+            run_git_command(&worker, vec!["tag", &source.tag]).await?;
+            run_git_command(&worker, vec!["push", "origin", "--tags"]).await?;
 
-            fs::remove_file(worker.join(source.tag_file()))
+            fs::remove_file(&worker_tag)
                 .await
-                .context("remove tag file")?;
-            fs::write(worker.join(source.master_file()), source.master.clone())
+                .map_io_error(&worker_tag)?;
+            fs::write(&worker_master, source.master.clone())
                 .await
-                .context("create master file")?;
-            Self::add_and_commit(&worker, "creating main file")
-                .await
-                .context("set main file")?;
+                .map_io_error(&worker_master)?;
+            Self::add_and_commit(&worker, "creating main file").await?;
             run_git_command(
                 &worker,
                 vec!["push", "--set-upstream", "origin", &source.master],
             )
-            .await
-            .context("push master file")?;
+            .await?;
 
-            run_git_command(&worker, vec!["checkout", "-b", &source.develop])
+            run_git_command(&worker, vec!["checkout", "-b", &source.develop]).await?;
+            fs::remove_file(&worker_master)
                 .await
-                .context("checkout develop")?;
-            fs::remove_file(worker.join(source.master_file()))
+                .map_io_error(&worker_master)?;
+            fs::write(&worker_develop, source.develop.clone())
                 .await
-                .context("remove master file")?;
-            fs::write(worker.join(source.develop_file()), source.develop.clone())
-                .await
-                .context("create develop file")?;
-            Self::add_and_commit(&worker, "creating develop file")
-                .await
-                .context("set develop file")?;
+                .map_io_error(&worker_develop)?;
+            Self::add_and_commit(&worker, "creating develop file").await?;
             run_git_command(
                 &worker,
                 vec!["push", "--set-upstream", "origin", &source.develop],
             )
-            .await
-            .context("push develop file")?;
+            .await?;
 
-            fs::remove_dir_all(&worker)
-                .await
-                .context("remove worker directory")?;
+            fs::remove_dir_all(&worker).await.map_io_error(&worker)?;
 
             Ok(source)
         }
@@ -436,6 +418,7 @@ pub mod test {
         let output = run_command::<String>(&tmp.path().to_path_buf(), "pwd", vec![])
             .await
             .unwrap();
+
         assert_eq!(tmp.path().to_path_buf(), PathBuf::from(output));
 
         let _ = run_command(&tmp.path().to_path_buf(), "mkdir", vec!["some-path"])

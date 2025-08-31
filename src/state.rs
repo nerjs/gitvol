@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::Result;
+use crate::result::{Error, Result};
 use log::kv;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -78,13 +78,18 @@ impl GitvolState {
 
     pub async fn create(&self, name: &str, repo: Repo) -> Result<()> {
         let name = name.trim();
-        anyhow::ensure!(!name.is_empty(), "An empty volume name is not allowed");
+
+        if name.is_empty() {
+            return Err(Error::EmptyVolumeName);
+        }
 
         let mut volumes = self.write_map().await;
-        anyhow::ensure!(
-            !volumes.contains_key(name),
-            "Volume named '{name}' already exists"
-        );
+
+        if volumes.contains_key(name) {
+            return Err(Error::VolumeAlreadyExists {
+                name: name.to_string(),
+            });
+        }
 
         let volume = Volume {
             name: name.to_string(),
@@ -110,6 +115,16 @@ impl GitvolState {
         let volume = self.get(name).await?;
         let guard = volume.write_owned().await;
         Some(guard)
+    }
+
+    pub async fn try_read(&self, name: &str) -> Result<OwnedRwLockReadGuard<Volume>> {
+        let volume = self.read(name).await;
+        volume.ok_or_else(|| Error::VolumeNonExists(name.to_string()))
+    }
+
+    pub async fn try_write(&self, name: &str) -> Result<OwnedRwLockWriteGuard<Volume>> {
+        let volume = self.write(name).await;
+        volume.ok_or_else(|| Error::VolumeNonExists(name.to_string()))
     }
 }
 

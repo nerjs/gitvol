@@ -1,4 +1,3 @@
-use anyhow::Context;
 use axum::{Json, extract::State};
 use log::{debug, kv, warn};
 use serde_json::json;
@@ -6,6 +5,7 @@ use tokio::fs;
 
 use crate::{
     git,
+    result::ErrorIoExt,
     state::{GitvolState, Repo, RepoStatus},
 };
 
@@ -42,10 +42,7 @@ pub(super) async fn get_volume(
     Json(Named { name }): Json<Named>,
 ) -> Result<GetResponse> {
     debug!(name; "Retrieving information for volume.");
-    let volume = state
-        .read(&name)
-        .await
-        .with_context(|| format!("Failed to read volume '{}'. Volume not exists", name))?;
+    let volume = state.try_read(&name).await?;
 
     let mountpoint = volume.path.clone();
     debug!(name, status = &volume.status, mountpoint = kv::Value::from_debug(&mountpoint); "Retrieved volume information");
@@ -85,15 +82,10 @@ pub(super) async fn create_volume(
     Json(RawCreateRequest { name, opts }): Json<RawCreateRequest>,
 ) -> Result<Empty> {
     debug!(name; "Attempting to create volume.");
-    let repo: Repo = opts
-        .try_into()
-        .context("Failed to parse repository options")?;
-    git::parse_url(&repo.url).context("Wrong or unsupported url format")?;
+    let repo: Repo = opts.try_into()?;
+    git::parse_url(&repo.url)?;
 
-    state
-        .create(&name, repo)
-        .await
-        .context("Failed to create volume")?;
+    state.create(&name, repo).await?;
     debug!(name; "Volume created successfully.");
     Ok(Empty {})
 }
@@ -111,9 +103,7 @@ pub(super) async fn remove_volume(
     };
 
     let volume = volume.read().await;
-    remove_dir_if_exists(volume.path.clone())
-        .await
-        .with_context(|| format!("Failed to remove directory for volume '{}'", name))?;
+    remove_dir_if_exists(volume.path.clone()).await?;
     drop(volume);
     volumes.remove(&name);
 
@@ -126,18 +116,13 @@ pub(super) async fn mount_volume_to_container(
     Json(NamedWID { name, id }): Json<NamedWID>,
 ) -> Result<Mp> {
     debug!(name, id; "Attempting to mount volume.");
-    let mut volume = state
-        .write(&name)
-        .await
-        .with_context(|| format!("Failed to mount volume '{}': not found", name))?;
+    let mut volume = state.try_write(&name).await?;
 
     if let Some(path) = volume.path.clone() {
         debug!(name, id; "Repository already cloned.");
         if volume.repo.refetch {
             debug!(name, id; "Attempting to refetch repository.");
-            git::refetch(&path)
-                .await
-                .with_context(|| format!("Failed to refetch repository '{}'", volume.repo.url))?;
+            git::refetch(&path).await?;
         }
         volume.containers.insert(id.clone());
         return Ok(Mp {
@@ -148,13 +133,9 @@ pub(super) async fn mount_volume_to_container(
     let path = state.path.join(volume.repo.hash());
     if path.exists() {
         debug!(name, id; "Repository directory already exists. Remooving");
-        fs::remove_dir_all(&path)
-            .await
-            .context("Removing trash repositiry dir")?;
+        fs::remove_dir_all(&path).await.map_io_error(&path)?;
     }
-    git::clone(&path, &volume.repo)
-        .await
-        .with_context(|| format!("Failed to clone repository '{}'", volume.repo.url))?;
+    git::clone(&path, &volume.repo).await?;
 
     volume.containers.insert(id.clone());
     volume.path = Some(path.clone());
@@ -182,14 +163,7 @@ pub(super) async fn unmount_volume_by_container(
     }
 
     volume.status = RepoStatus::Cleared;
-    remove_dir_if_exists(volume.path.clone())
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to remove repository directory for volume '{}'",
-                name
-            )
-        })?;
+    remove_dir_if_exists(volume.path.clone()).await?;
     volume.path = None;
 
     debug!(name, id; "Volume unmounted successfully.");
