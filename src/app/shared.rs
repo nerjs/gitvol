@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
-use log::{debug, kv};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::fs;
+use tracing::{debug, error, field};
 
 use crate::{
     result::{Error, ErrorIoExt},
@@ -15,7 +15,7 @@ use crate::{
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
-        log::error!("Response error: {:?}", self);
+        error!("Response error: {:?}", self);
         let error = format!("{}", self);
 
         (StatusCode::OK, Json(json!({"Err":error}))).into_response()
@@ -67,7 +67,7 @@ impl TryInto<Repo> for Option<RawRepo> {
         let branch = branch.or(tag);
         let refetch = refetch.unwrap_or(false);
 
-        debug!(url, branch, refetch; "Parsed repository options");
+        debug!(url, branch, refetch, "Parsed repository options");
 
         Ok(Repo {
             url,
@@ -174,7 +174,7 @@ pub(super) async fn remove_dir_if_exists(path: Option<PathBuf>) -> crate::result
     if let Some(path) = path
         && path.exists()
     {
-        debug!(path = kv::Value::from_debug(&path); "Attempting to remove directory");
+        debug!(path = field::debug(&path), "Attempting to remove directory");
         fs::remove_dir_all(&path).await.map_io_error(&path)?;
     }
 

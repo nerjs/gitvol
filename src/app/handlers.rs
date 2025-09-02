@@ -1,7 +1,7 @@
 use axum::{Json, extract::State};
-use log::{debug, kv, warn};
 use serde_json::json;
 use tokio::fs;
+use tracing::{debug, field, warn};
 
 use crate::{
     git,
@@ -25,15 +25,19 @@ pub(super) async fn get_volume_path(
     State(state): State<GitvolState>,
     Json(Named { name }): Json<Named>,
 ) -> Result<OptionalMp> {
-    debug!(name; "Retrieving path for volume.");
+    debug!(name, "Retrieving path for volume.");
     let Some(volume) = state.read(&name).await else {
-        log::warn!(name; "Volume not found.");
+        warn!(name, "Volume not found.");
         return Ok(OptionalMp { mountpoint: None });
     };
 
     let mountpoint = volume.path.clone();
 
-    debug!(name, mountpoint = format!("{:?}", mountpoint); "Retrieved volume path information");
+    debug!(
+        name,
+        mountpoint = field::debug(&mountpoint),
+        "Retrieved volume path information"
+    );
     Ok(OptionalMp { mountpoint })
 }
 
@@ -41,11 +45,16 @@ pub(super) async fn get_volume(
     State(state): State<GitvolState>,
     Json(Named { name }): Json<Named>,
 ) -> Result<GetResponse> {
-    debug!(name; "Retrieving information for volume.");
+    debug!(name, "Retrieving information for volume.");
     let volume = state.try_read(&name).await?;
 
     let mountpoint = volume.path.clone();
-    debug!(name, status = &volume.status, mountpoint = kv::Value::from_debug(&mountpoint); "Retrieved volume information");
+    debug!(
+        name,
+        status = field::debug(&volume.status),
+        mountpoint = field::debug(&mountpoint),
+        "Retrieved volume information"
+    );
 
     Ok(GetResponse {
         volume: GetMp {
@@ -72,7 +81,7 @@ pub(super) async fn list_volumes(State(state): State<GitvolState>) -> Result<Lis
         });
     }
 
-    debug!(count = volumes.len(); "Retrieved volumes list.");
+    debug!(count = volumes.len(), "Retrieved volumes list.");
 
     Ok(ListResponse { volumes })
 }
@@ -81,12 +90,12 @@ pub(super) async fn create_volume(
     State(state): State<GitvolState>,
     Json(RawCreateRequest { name, opts }): Json<RawCreateRequest>,
 ) -> Result<Empty> {
-    debug!(name; "Attempting to create volume.");
+    debug!(name, "Attempting to create volume.");
     let repo: Repo = opts.try_into()?;
     git::parse_url(&repo.url)?;
 
     state.create(&name, repo).await?;
-    debug!(name; "Volume created successfully.");
+    debug!(name, "Volume created successfully.");
     Ok(Empty {})
 }
 
@@ -94,11 +103,11 @@ pub(super) async fn remove_volume(
     State(state): State<GitvolState>,
     Json(Named { name }): Json<Named>,
 ) -> Result<Empty> {
-    debug!(name; "Attempting to remove volume.");
+    debug!(name, "Attempting to remove volume.");
     let mut volumes = state.write_map().await;
 
     let Some(volume) = volumes.get(&name) else {
-        warn!(name; "Volume not found.");
+        warn!(name, "Volume not found.");
         return Ok(Empty {});
     };
 
@@ -107,7 +116,7 @@ pub(super) async fn remove_volume(
     drop(volume);
     volumes.remove(&name);
 
-    debug!(name; "Volume removed successfully.");
+    debug!(name, "Volume removed successfully.");
     Ok(Empty {})
 }
 
@@ -115,13 +124,13 @@ pub(super) async fn mount_volume_to_container(
     State(state): State<GitvolState>,
     Json(NamedWID { name, id }): Json<NamedWID>,
 ) -> Result<Mp> {
-    debug!(name, id; "Attempting to mount volume.");
+    debug!(name, id, "Attempting to mount volume.");
     let mut volume = state.try_write(&name).await?;
 
     if let Some(path) = volume.path.clone() {
-        debug!(name, id; "Repository already cloned.");
+        debug!(name, id, "Repository already cloned.");
         if volume.repo.refetch {
-            debug!(name, id; "Attempting to refetch repository.");
+            debug!(name, id, "Attempting to refetch repository.");
             git::refetch(&path).await?;
         }
         volume.containers.insert(id.clone());
@@ -132,7 +141,7 @@ pub(super) async fn mount_volume_to_container(
 
     let path = state.path.join(volume.repo.hash());
     if path.exists() {
-        debug!(name, id; "Repository directory already exists. Remooving");
+        debug!(name, id, "Repository directory already exists. Remooving");
         fs::remove_dir_all(&path).await.map_io_error(&path)?;
     }
     git::clone(&path, &volume.repo).await?;
@@ -141,7 +150,7 @@ pub(super) async fn mount_volume_to_container(
     volume.path = Some(path.clone());
     volume.status = RepoStatus::Clonned;
 
-    debug!(name, id; "Volume mounted successfully.");
+    debug!(name, id, "Volume mounted successfully.");
     Ok(Mp { mountpoint: path })
 }
 
@@ -149,16 +158,20 @@ pub(super) async fn unmount_volume_by_container(
     State(state): State<GitvolState>,
     Json(NamedWID { name, id }): Json<NamedWID>,
 ) -> Result<Empty> {
-    debug!(name, id; "Attempting to unmount volume.");
+    debug!(name, id, "Attempting to unmount volume.");
     let Some(mut volume) = state.write(&name).await else {
-        warn!(name, id; "Volume not found.");
+        warn!(name, id, "Volume not found.");
         return Ok(Empty {});
     };
 
     volume.containers.remove(&id);
 
     if !volume.containers.is_empty() {
-        debug!(name, id, container_count = volume.containers.len(); "Volume still in use by containers.");
+        debug!(
+            name,
+            container_count = volume.containers.len(),
+            "Volume still in use by containers."
+        );
         return Ok(Empty {});
     }
 
@@ -166,6 +179,6 @@ pub(super) async fn unmount_volume_by_container(
     remove_dir_if_exists(volume.path.clone()).await?;
     volume.path = None;
 
-    debug!(name, id; "Volume unmounted successfully.");
+    debug!(name, "Volume unmounted successfully.");
     Ok(Empty {})
 }

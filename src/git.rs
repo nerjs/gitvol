@@ -1,12 +1,12 @@
 use crate::result::{Error, Result};
 use git_url_parse::{GitUrl, Scheme};
-use log::{debug, kv::Value, trace};
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Output,
 };
 use tokio::{fs, process::Command};
+use tracing::{debug, field, trace};
 
 use crate::state::Repo;
 
@@ -87,15 +87,15 @@ where
 
 pub async fn ensure_git_exists() -> Result<()> {
     let git_path = run_command(&"/".into(), "which", vec!["git"]).await?;
-    debug!(git_path;  "Located git executable.");
-    let git_version = run_git_command(&"/".into(), vec!["--version"]).await?;
-    debug!(version = format!("'{}'", git_version); "Verified git version.");
+    debug!(git_path, "Located git executable.");
+    let version = run_git_command(&"/".into(), vec!["--version"]).await?;
+    debug!(version, "Verified git version.");
 
     Ok(())
 }
 
 pub async fn clone(path: &Path, repo: &Repo) -> Result<()> {
-    debug!(url = repo.url; "trying clonning repository.");
+    debug!(url = repo.url, "trying clonning repository.");
 
     if path.exists() {
         return Err(Error::PathAlreadyExists {
@@ -124,13 +124,13 @@ pub async fn clone(path: &Path, repo: &Repo) -> Result<()> {
             })?;
     }
 
-    debug!(url = repo.url; "Succefully clonning.");
+    debug!(url = repo.url, "Succefully clonning.");
 
     Ok(())
 }
 
 pub async fn refetch(path: &PathBuf) -> Result<()> {
-    debug!(path = Value::from_debug(path); "trying refetch repository");
+    debug!(path = field::debug(path), "trying refetch repository");
 
     if !path.exists() {
         return Err(Error::PathNotExists { path: path.clone() });

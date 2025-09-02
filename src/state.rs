@@ -5,7 +5,6 @@ use std::{
 };
 
 use crate::result::{Error, Result};
-use log::kv;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
@@ -39,12 +38,6 @@ pub struct Volume {
     pub repo: Repo,
     pub status: RepoStatus,
     pub containers: HashSet<String>,
-}
-
-impl kv::ToValue for RepoStatus {
-    fn to_value(&self) -> kv::Value<'_> {
-        kv::Value::from_debug(self)
-    }
 }
 
 #[derive(Debug, Clone)]

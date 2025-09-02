@@ -22,8 +22,8 @@ updates:
       #     - tempfile
       logging:
         patterns:
-          - env_logger
-          - log
+          - tracing-subscriber
+          - tracing
       infrastructure:
         patterns:
           - tokio

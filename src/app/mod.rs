@@ -13,6 +13,7 @@ use axum::{
     routing::post,
 };
 use handlers::*;
+use tracing::{Instrument, info_span};
 
 pub fn create(state: GitvolState) -> Router {
     Router::new()
@@ -30,9 +31,11 @@ pub fn create(state: GitvolState) -> Router {
 }
 
 async fn transform_headers(mut request: Request, next: Next) -> Response {
+    let uri = request.uri().to_string();
+    let span = info_span!("call", uri);
     let headers = request.headers_mut();
     headers.append(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let mut response = next.run(request).await;
+    let mut response = next.run(request).instrument(span).await;
     let response_headers = response.headers_mut();
     response_headers.append(
         CONTENT_TYPE,
