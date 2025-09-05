@@ -129,7 +129,11 @@ impl RawCreateRequest {
 
     fn with_refetch(self, refetch: bool) -> Self {
         let mut opts = self.clone().opts.unwrap_or_default();
-        opts.refetch = Some(refetch);
+        opts.refetch = Some(if refetch {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        });
         self.with_opts(opts)
     }
 }

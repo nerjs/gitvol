@@ -40,6 +40,12 @@ pub struct Volume {
     pub containers: HashSet<String>,
 }
 
+impl Volume {
+    pub fn build_path(&self) -> String {
+        format!("{}_{}", self.name, self.repo.hash())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GitvolState {
     pub path: PathBuf,

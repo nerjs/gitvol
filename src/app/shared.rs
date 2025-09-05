@@ -39,7 +39,7 @@ pub(super) struct RawRepo {
     pub(super) url: Option<String>,
     pub(super) branch: Option<String>,
     pub(super) tag: Option<String>,
-    pub(super) refetch: Option<bool>,
+    pub(super) refetch: Option<String>,
 }
 
 impl TryInto<Repo> for Option<RawRepo> {
@@ -65,7 +65,7 @@ impl TryInto<Repo> for Option<RawRepo> {
         }
 
         let branch = branch.or(tag);
-        let refetch = refetch.unwrap_or(false);
+        let refetch = refetch.unwrap_or("false".to_string()) == "true";
 
         debug!(url, branch, refetch, "Parsed repository options");
 

@@ -1,22 +1,23 @@
 version: '3'
 services:
-    filebrowser:
+    static1:
         volumes:
-            - 'ttt:/srv/ttt'
-            - 'zzz:/srv/zzz'
+            - 'my-vol:/srv/http'
         ports:
-            - '8080:80'
-        image: 'filebrowser/filebrowser:latest'
+            - '8080:8043'
+        image: 'pierrezemb/gostatic'
+    static2:
+        volumes:
+            - 'my-vol:/srv/http'
+        ports:
+            - '8081:8043'
+        image: 'pierrezemb/gostatic'
         
         
 volumes:
-  ttt:
-    driver: nerjs/gitvol
+  my-vol:
+    driver: nerjs/gitvol:latest
+    name: mv_v6
     driver_opts:
-      url: https://github.com/nerjs/nlogs.git
-      tag: v2.4.4
-  zzz:
-    driver: nerjs/gitvol
-    driver_opts:
-      url: https://github.com/nerjs/nlogs.git
-      tag: v1.1.3
+      url: https://github.com/nerjs/gitvol-test.git
+      refetch: "true"

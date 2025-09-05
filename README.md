@@ -61,7 +61,43 @@ volumes:
 
 - `branch` (optional) — checkout a branch. **Not recommended** since branch contents may change between mounts.
 
+- `refetch` (optional, default `"false"`) — when set to `"true"`, the plugin runs `git fetch` on each mount attempt, so the repository is updated if there are changes upstream.
+
 > `tag` and `branch` are **mutually exclusive**.
+
+### How it works
+
+- The repository is cloned once per ***volume*** (unique per volume name, but not per container).
+
+- Multiple containers can share the same volume — they all see the same underlying clone.
+
+```yaml
+version: '3'
+services:
+    static1:
+        volumes:
+            - 'my-vol:/srv/http'
+        ports:
+            - '8080:8043'
+        image: 'pierrezemb/gostatic'
+    static2:
+        volumes:
+            - 'my-vol:/srv/http'
+        ports:
+            - '8081:8043'
+        image: 'pierrezemb/gostatic'
+        
+        
+volumes:
+  my-vol:
+    driver: nerjs/gitvol
+    driver_opts:
+      url: https://github.com/nerjs/gitvol-test.git
+      refetch: "true"
+
+```
+
+Both `static1` and `static2` mount the same volume. With `refetch: "true"`, restarting one container (e.g. `docker compose restart static1`) triggers a `git fetch` in the volume, so both containers see updated repository contents.
 
 ---
 

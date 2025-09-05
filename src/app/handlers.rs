@@ -18,7 +18,7 @@ pub(super) async fn activate_plugin() -> Result {
 
 pub(super) async fn capabilities_handler() -> Result {
     debug!("Retrieving plugin capabilities.");
-    Ok(Json(json!({ "Capabilities": { "Scope": "global" } })))
+    Ok(Json(json!({ "Capabilities": { "Scope": "local" } })))
 }
 
 pub(super) async fn get_volume_path(
@@ -139,7 +139,7 @@ pub(super) async fn mount_volume_to_container(
         });
     }
 
-    let path = state.path.join(volume.repo.hash());
+    let path = state.path.join(volume.build_path());
     if path.exists() {
         debug!(name, id, "Repository directory already exists. Remooving");
         fs::remove_dir_all(&path).await.map_io_error(&path)?;
