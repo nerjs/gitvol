@@ -55,7 +55,7 @@ volumes:
 
 ## Options
 
-- `url` (required) — Git-compatible repository URL. See [Git URLs](https://git-scm.com/docs/git-clone#_git_urls).
+- `url` (required) — Git-compatible repository URL. See [Git URLs](https://git-scm.com/docs/git-clone#_git_urls) (now supported only http(s)).
 
 - `tag` (optional) — checkout a specific tag (__recommended__).
 

@@ -31,15 +31,8 @@ pub fn parse_url(input: &str) -> Result<()> {
     }
 
     let GitUrl { scheme, .. } = GitUrl::parse(input)?;
-
-    if [Scheme::Unspecified, Scheme::Ftp, Scheme::Ftps].contains(&scheme) {
-        return Err(Error::UnsupportedUrlScheme {
-            scheme,
-            url: str_url.into(),
-        });
-    }
-
-    if cfg!(not(test)) && scheme == Scheme::File {
+    
+    if ![Scheme::Http, Scheme::Https].contains(&scheme) && !(cfg!(test) && scheme == Scheme::File) {
         return Err(Error::UnsupportedUrlScheme {
             scheme,
             url: str_url.into(),
@@ -376,27 +369,27 @@ pub mod test {
     #[test]
     fn check_valid_urls() {
         let valid_urls = vec![
+            "http://host/path-to-git-repo",
+            "https://host/path-to-git-repo",
+            "http://host:123/path-to-git-repo",
+            "https://host:123/path-to-git-repo",
+        ];
+
+        let not_valid_urls = vec![
+            "host:~user/path-to-git-repo",
+            "user@host:~user/path-to-git-repo",
             "ssh://host/path-to-git-repo",
             "ssh://user@host/path-to-git-repo",
             "ssh://host:123/path-to-git-repo",
             "ssh://user@host:123/path-to-git-repo",
             "git://host/path-to-git-repo",
             "git://host:123/path-to-git-repo",
-            "http://host/path-to-git-repo",
-            "https://host/path-to-git-repo",
-            "http://host:123/path-to-git-repo",
-            "https://host:123/path-to-git-repo",
+            "git://host/~user/path-to-git-repo",
+            "git://host:123/~user/path-to-git-repo",
             "ssh://host/~user/path-to-git-repo",
             "ssh://user@host/~user/path-to-git-repo",
             "ssh://host:123/~user/path-to-git-repo",
             "ssh://user@host:123/~user/path-to-git-repo",
-            "git://host/~user/path-to-git-repo",
-            "git://host:123/~user/path-to-git-repo",
-            "host:~user/path-to-git-repo",
-            "user@host:~user/path-to-git-repo",
-        ];
-
-        let not_valid_urls = vec![
             "ftp://host/path-to-git-repo",
             "ftps://host/path-to-git-repo",
             "ftp://host:123/path-to-git-repo",
