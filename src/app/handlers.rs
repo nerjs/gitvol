@@ -4,9 +4,10 @@ use tokio::fs;
 use tracing::{debug, field, warn};
 
 use crate::{
+    domains::repo::Repo,
     git,
     result::ErrorIoExt,
-    state::{GitvolState, Repo, RepoStatus},
+    state::{GitvolState, RepoStatus},
 };
 
 use super::shared::*;
@@ -91,7 +92,7 @@ pub(super) async fn create_volume(
     Json(RawCreateRequest { name, opts }): Json<RawCreateRequest>,
 ) -> Result<Empty> {
     debug!(name, "Attempting to create volume.");
-    let repo: Repo = opts.try_into()?;
+    let repo: Repo = Repo::try_from(opts)?;
 
     state.create(&name, repo).await?;
     debug!(name, "Volume created successfully.");

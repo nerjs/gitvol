@@ -1,16 +1,7 @@
-use std::{io::ErrorKind, path::PathBuf, process::ExitStatus, string::FromUtf8Error};
+use std::{io::ErrorKind, path::PathBuf, string::FromUtf8Error};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Invalid repository configuration: no options provided, git URL is required")]
-    ParamsNoOptions,
-
-    #[error("Invalid repository configuration: git URL is missing")]
-    ParamsRequiredUrl,
-
-    #[error("Only one of branch, tag, or ref parameters is allowed")]
-    ParamsSingleBranch,
-
     #[error("Path {:?} must be correct unix socket", .0)]
     NoSocket(PathBuf),
 
@@ -32,16 +23,12 @@ pub enum Error {
     #[error("repository URL  parsing: {}", .0.to_string())]
     Url(#[from] crate::domains::url::Error),
 
+    #[error(transparent)]
+    Repo(#[from] crate::domains::repo::Error),
+
     #[error("Failed to execute command '{cmd} {args:?}' with reason: {reason:?}")]
     Cmd {
         reason: String,
-        cmd: String,
-        args: Vec<String>,
-    },
-
-    #[error("Command '{cmd} {args:?}' exited with non-zero status: {status}")]
-    CmdNonZero {
-        status: ExitStatus,
         cmd: String,
         args: Vec<String>,
     },

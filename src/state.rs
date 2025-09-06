@@ -1,28 +1,16 @@
 use std::{
     collections::{HashMap, HashSet},
+    hash::{DefaultHasher, Hash, Hasher},
     path::PathBuf,
     sync::Arc,
 };
 
-use crate::result::{Error, Result};
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use crate::{
+    domains::repo::Repo,
+    result::{Error, Result},
+};
+use serde::Serialize;
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
-
-#[cfg_attr(test, derive(PartialEq, Default))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Repo {
-    pub url: String,
-    pub branch: Option<String>,
-    pub refetch: bool,
-}
-
-impl Repo {
-    pub fn hash(&self) -> String {
-        let hash = Sha256::digest(format!("{:?}", self));
-        format!("{:x}", hash)
-    }
-}
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
 pub enum RepoStatus {
@@ -31,7 +19,7 @@ pub enum RepoStatus {
     Cleared,
 }
 
-#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(Clone))]
 pub struct Volume {
     pub name: String,
     pub path: Option<PathBuf>,
@@ -42,11 +30,13 @@ pub struct Volume {
 
 impl Volume {
     pub fn build_path(&self) -> String {
-        format!("{}_{}", self.name, self.repo.hash())
+        let mut hasher = DefaultHasher::new();
+        self.repo.hash(&mut hasher);
+        format!("{}_{}", self.name, hasher.finish())
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GitvolState {
     pub path: PathBuf,
     pub volumes: Arc<RwLock<HashMap<String, Arc<RwLock<Volume>>>>>,
@@ -133,19 +123,6 @@ pub mod test {
 
     pub const VOLUME_NAME: &str = "test_volume";
     pub const REPO_URL: &str = "https://example.com/repo.git";
-
-    impl Repo {
-        pub fn stub() -> Self {
-            Self::url(REPO_URL)
-        }
-
-        pub fn url(url: &str) -> Self {
-            Self {
-                url: url.to_string(),
-                ..Default::default()
-            }
-        }
-    }
 
     impl Volume {
         fn new(name: &str) -> Self {
@@ -295,16 +272,5 @@ pub mod test {
 
         assert_eq!(volumes.len(), 1);
         assert!(volumes.contains_key(VOLUME_NAME));
-    }
-
-    #[tokio::test]
-    async fn repo_hash_consistency() {
-        let repo1 = Repo::stub();
-        let repo2 = Repo::stub();
-        let repo3 = Repo::url("other_url");
-
-        assert_eq!(repo1.hash(), repo2.hash());
-        assert_ne!(repo1.hash(), repo3.hash());
-        assert_ne!(repo2.hash(), repo3.hash());
     }
 }

@@ -22,7 +22,8 @@ pub enum Error {
     Unsupported(Scheme),
 }
 
-#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+#[derive(Clone)]
 pub struct Url(GitUrl);
 
 impl FromStr for Url {
@@ -47,6 +48,12 @@ impl FromStr for Url {
 impl Display for Url {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl std::hash::Hash for Url {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(self.to_string().as_bytes());
     }
 }
 

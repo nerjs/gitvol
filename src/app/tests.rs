@@ -1,8 +1,10 @@
 use super::handlers::*;
 use super::shared::*;
+use crate::domains::repo::RawRepo;
+use crate::domains::repo::Repo;
 use crate::result::Result;
 use crate::state::{
-    GitvolState, Repo, RepoStatus,
+    GitvolState, RepoStatus,
     test::{REPO_URL, VOLUME_NAME},
 };
 use axum::{Json, extract::State};

@@ -1,4 +1,7 @@
-use crate::result::{Error, Result};
+use crate::{
+    domains::repo::Repo,
+    result::{Error, Result},
+};
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -6,8 +9,6 @@ use std::{
 };
 use tokio::{fs, process::Command};
 use tracing::{debug, field, trace};
-
-use crate::state::Repo;
 
 impl Error {
     pub fn cmd<S, R>(command: &str, args: &[S], reason: R) -> Error
@@ -69,7 +70,7 @@ pub async fn ensure_git_exists() -> Result<()> {
 }
 
 pub async fn clone(path: &Path, repo: &Repo) -> Result<()> {
-    debug!(url = repo.url, "trying clonning repository.");
+    debug!(url = repo.url.to_string(), "trying clonning repository.");
 
     if path.exists() {
         return Err(Error::PathAlreadyExists {
@@ -82,7 +83,8 @@ pub async fn clone(path: &Path, repo: &Repo) -> Result<()> {
         raw_cmd.push("--branch");
         raw_cmd.push(branch);
     }
-    raw_cmd.push(&repo.url);
+    let repo_url = repo.url.to_string();
+    raw_cmd.push(&repo_url);
     raw_cmd.push(path.to_str().unwrap_or_default());
 
     let output = run_git_command(&"/".into(), raw_cmd).await?;
@@ -98,7 +100,7 @@ pub async fn clone(path: &Path, repo: &Repo) -> Result<()> {
             })?;
     }
 
-    debug!(url = repo.url, "Succefully clonning.");
+    debug!(url = repo.url.to_string(), "Succefully clonning.");
 
     Ok(())
 }
@@ -128,7 +130,7 @@ pub mod test {
     use once_cell::sync::Lazy;
     use std::str::FromStr;
 
-    use crate::result::ErrorIoExt;
+    use crate::{domains::url::Url, result::ErrorIoExt};
 
     use super::*;
     use tempfile::{Builder, TempDir, tempdir};
@@ -402,7 +404,7 @@ pub mod test {
         let path = tmp.path().join("repository");
 
         let repo = Repo {
-            url: test_repo.file.clone(),
+            url: Url::from_str(&test_repo.file).unwrap(),
             branch: None,
             refetch: false,
         };
@@ -421,7 +423,7 @@ pub mod test {
         let path = tmp.path().join("repository");
 
         let repo = Repo {
-            url: test_repo.file.clone(),
+            url: Url::from_str(&test_repo.file).unwrap(),
             branch: Some(test_repo.develop.clone()),
             refetch: false,
         };
@@ -440,7 +442,7 @@ pub mod test {
         let path = tmp.path().join("repository");
 
         let repo = Repo {
-            url: test_repo.file.clone(),
+            url: Url::from_str(&test_repo.file).unwrap(),
             branch: Some(test_repo.tag.clone()),
             refetch: false,
         };
@@ -462,7 +464,7 @@ pub mod test {
         test_repo.setup_temp_branch(&branch_name).await.unwrap();
 
         let repo = Repo {
-            url: test_repo.file.clone(),
+            url: Url::from_str(&test_repo.file).unwrap(),
             branch: Some(branch_name.clone()),
             refetch: true,
         };

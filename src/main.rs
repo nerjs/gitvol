@@ -26,6 +26,8 @@ use crate::{
 #[tokio::main]
 async fn main() -> Result<()> {
     split_tracing::init();
+
+    debug!("tratata");
     let settings = Settings::parse().await?;
 
     git::ensure_git_exists().await?;

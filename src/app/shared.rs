@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr};
+use std::path::PathBuf;
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
@@ -7,9 +7,9 @@ use tokio::fs;
 use tracing::{debug, error, field};
 
 use crate::{
-    domains::url::Url,
+    domains::repo::RawRepo,
     result::{Error, ErrorIoExt},
-    state::{Repo, RepoStatus},
+    state::RepoStatus,
 };
 
 // CORE
@@ -32,51 +32,6 @@ pub(super) type Result<T = Json<serde_json::Value>> = std::result::Result<T, Err
 #[serde(rename_all = "PascalCase")]
 pub(super) struct Named {
     pub(super) name: String,
-}
-
-#[cfg_attr(test, derive(Default, Clone))]
-#[derive(Deserialize)]
-pub(super) struct RawRepo {
-    pub(super) url: Option<String>,
-    pub(super) branch: Option<String>,
-    pub(super) tag: Option<String>,
-    pub(super) refetch: Option<String>,
-}
-
-impl TryInto<Repo> for Option<RawRepo> {
-    type Error = Error;
-
-    fn try_into(self) -> crate::result::Result<Repo> {
-        let Some(RawRepo {
-            url,
-            branch,
-            tag,
-            refetch,
-        }) = self
-        else {
-            return Err(Error::ParamsNoOptions);
-        };
-
-        let Some(url) = url else {
-            return Err(Error::ParamsRequiredUrl);
-        };
-
-        if branch.is_some() && tag.is_some() {
-            return Err(Error::ParamsSingleBranch);
-        }
-
-        let branch = branch.or(tag);
-        let refetch = refetch.unwrap_or("false".to_string()) == "true";
-        let url = Url::from_str(&url)?.to_string();
-
-        debug!(url, branch, refetch, "Parsed repository options");
-
-        Ok(Repo {
-            url,
-            branch,
-            refetch,
-        })
-    }
 }
 
 #[cfg_attr(test, derive(Default, Clone))]
