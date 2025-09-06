@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
@@ -7,6 +7,7 @@ use tokio::fs;
 use tracing::{debug, error, field};
 
 use crate::{
+    domains::url::Url,
     result::{Error, ErrorIoExt},
     state::{Repo, RepoStatus},
 };
@@ -66,6 +67,7 @@ impl TryInto<Repo> for Option<RawRepo> {
 
         let branch = branch.or(tag);
         let refetch = refetch.unwrap_or("false".to_string()) == "true";
+        let url = Url::from_str(&url)?.to_string();
 
         debug!(url, branch, refetch, "Parsed repository options");
 

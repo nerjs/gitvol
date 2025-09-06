@@ -92,7 +92,6 @@ pub(super) async fn create_volume(
 ) -> Result<Empty> {
     debug!(name, "Attempting to create volume.");
     let repo: Repo = opts.try_into()?;
-    git::parse_url(&repo.url)?;
 
     state.create(&name, repo).await?;
     debug!(name, "Volume created successfully.");

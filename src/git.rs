@@ -1,5 +1,4 @@
 use crate::result::{Error, Result};
-use git_url_parse::{GitUrl, Scheme};
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -22,24 +21,6 @@ impl Error {
             args: args.iter().map(|s| format!("{s:?}")).collect(),
         }
     }
-}
-
-pub fn parse_url(input: &str) -> Result<()> {
-    let str_url = input.trim();
-    if str_url.is_empty() {
-        return Err(Error::EmptyUrl);
-    }
-
-    let GitUrl { scheme, .. } = GitUrl::parse(input)?;
-    
-    if ![Scheme::Http, Scheme::Https].contains(&scheme) && !(cfg!(test) && scheme == Scheme::File) {
-        return Err(Error::UnsupportedUrlScheme {
-            scheme,
-            url: str_url.into(),
-        });
-    }
-
-    Ok(())
 }
 
 async fn run_command<S>(current_dir: &PathBuf, cmd: &str, args: Vec<S>) -> Result<String>
@@ -364,45 +345,6 @@ pub mod test {
     pub fn is_git_dir(path: &PathBuf) -> bool {
         let git_dir = path.join(".git");
         git_dir.exists() && git_dir.is_dir()
-    }
-
-    #[test]
-    fn check_valid_urls() {
-        let valid_urls = vec![
-            "http://host/path-to-git-repo",
-            "https://host/path-to-git-repo",
-            "http://host:123/path-to-git-repo",
-            "https://host:123/path-to-git-repo",
-        ];
-
-        let not_valid_urls = vec![
-            "host:~user/path-to-git-repo",
-            "user@host:~user/path-to-git-repo",
-            "ssh://host/path-to-git-repo",
-            "ssh://user@host/path-to-git-repo",
-            "ssh://host:123/path-to-git-repo",
-            "ssh://user@host:123/path-to-git-repo",
-            "git://host/path-to-git-repo",
-            "git://host:123/path-to-git-repo",
-            "git://host/~user/path-to-git-repo",
-            "git://host:123/~user/path-to-git-repo",
-            "ssh://host/~user/path-to-git-repo",
-            "ssh://user@host/~user/path-to-git-repo",
-            "ssh://host:123/~user/path-to-git-repo",
-            "ssh://user@host:123/~user/path-to-git-repo",
-            "ftp://host/path-to-git-repo",
-            "ftps://host/path-to-git-repo",
-            "ftp://host:123/path-to-git-repo",
-            "ftps://host:123/path-to-git-repo",
-            "",
-        ];
-
-        for url in valid_urls {
-            assert!(parse_url(url).is_ok(), "Failed parsing url '{}'", url);
-        }
-        for url in not_valid_urls {
-            assert!(parse_url(url).is_err(), "Failed parsing url '{}'", url);
-        }
     }
 
     #[tokio::test]

@@ -1,7 +1,5 @@
 use std::{io::ErrorKind, path::PathBuf, process::ExitStatus, string::FromUtf8Error};
 
-use git_url_parse::{GitUrlParseError, Scheme};
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Invalid repository configuration: no options provided, git URL is required")]
@@ -31,14 +29,8 @@ pub enum Error {
     #[error("Non existen volume named {:?}", .0)]
     VolumeNonExists(String),
 
-    #[error("RepositoryUrl can not be empty")]
-    EmptyUrl,
-
-    #[error("Unsupported repository URL scheme: {} . url: {}", .scheme.to_string(), .url)]
-    UnsupportedUrlScheme { scheme: Scheme, url: String },
-
     #[error("repository URL  parsing: {}", .0.to_string())]
-    Url(#[from] GitUrlParseError),
+    Url(#[from] crate::domains::url::Error),
 
     #[error("Failed to execute command '{cmd} {args:?}' with reason: {reason:?}")]
     Cmd {

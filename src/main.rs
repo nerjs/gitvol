@@ -1,7 +1,9 @@
 mod app;
+mod domains;
 mod git;
 mod macros;
 mod result;
+mod services;
 mod split_tracing;
 mod state;
 
