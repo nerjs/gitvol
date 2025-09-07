@@ -6,9 +6,6 @@ use tracing::debug;
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("no options provided, git URL is required")]
-    None,
-
     #[error("git URL is missing")]
     MissingUrl,
 
@@ -27,7 +24,7 @@ pub struct Repo {
     pub refetch: bool,
 }
 
-#[cfg_attr(test, derive(Default, Clone))]
+#[cfg_attr(test, derive(Default, Clone, Debug))]
 #[derive(Deserialize)]
 pub struct RawRepo {
     pub url: Option<String>,
@@ -66,19 +63,6 @@ impl TryFrom<RawRepo> for Repo {
     }
 }
 
-impl TryFrom<Option<RawRepo>> for Repo {
-    type Error = Error;
-
-    fn try_from(value: Option<RawRepo>) -> Result<Self, Self::Error> {
-        let Some(raw) = value else {
-            return Err(Error::None);
-        };
-
-        let repo = Self::try_from(raw)?;
-        Ok(repo)
-    }
-}
-
 #[cfg(test)]
 pub mod test {
     use std::hash::{DefaultHasher, Hash, Hasher};
@@ -90,10 +74,10 @@ pub mod test {
 
     impl Repo {
         pub fn stub() -> Self {
-            Self::url(REPO_URL)
+            Self::from_url(REPO_URL)
         }
 
-        pub fn url(url: &str) -> Self {
+        pub fn from_url(url: &str) -> Self {
             Self {
                 url: Url::from_str(url).unwrap(),
                 branch: None,
@@ -101,11 +85,17 @@ pub mod test {
             }
         }
     }
+    impl RawRepo {
+        pub fn stub() -> Self {
+            Self::from_url(REPO_URL)
+        }
 
-    #[test]
-    fn missing_options() {
-        let error = Repo::try_from(None).unwrap_err();
-        assert_eq!(error, Error::None);
+        pub fn from_url(url: &str) -> Self {
+            Self {
+                url: Some(url.to_string()),
+                ..Default::default()
+            }
+        }
     }
 
     #[rstest]

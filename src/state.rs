@@ -1,40 +1,10 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::{DefaultHasher, Hash, Hasher},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use crate::{
-    domains::repo::Repo,
+    domains::{repo::RawRepo, volume::Volume},
     result::{Error, Result},
 };
-use serde::Serialize;
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
-
-#[derive(Debug, Serialize, Clone, PartialEq)]
-pub enum RepoStatus {
-    Created,
-    Clonned,
-    Cleared,
-}
-
-#[cfg_attr(test, derive(Clone))]
-pub struct Volume {
-    pub name: String,
-    pub path: Option<PathBuf>,
-    pub repo: Repo,
-    pub status: RepoStatus,
-    pub containers: HashSet<String>,
-}
-
-impl Volume {
-    pub fn build_path(&self) -> String {
-        let mut hasher = DefaultHasher::new();
-        self.repo.hash(&mut hasher);
-        format!("{}_{}", self.name, hasher.finish())
-    }
-}
 
 #[derive(Clone)]
 pub struct GitvolState {
@@ -65,28 +35,16 @@ impl GitvolState {
         volume.cloned()
     }
 
-    pub async fn create(&self, name: &str, repo: Repo) -> Result<()> {
-        let name = name.trim();
-
-        if name.is_empty() {
-            return Err(Error::EmptyVolumeName);
-        }
-
+    pub async fn create(&self, name: &str, raw: Option<RawRepo>) -> Result<()> {
         let mut volumes = self.write_map().await;
 
-        if volumes.contains_key(name) {
+        let volume = Volume::try_from((name, raw))?;
+
+        if volumes.contains_key(&volume.name) {
             return Err(Error::VolumeAlreadyExists {
                 name: name.to_string(),
             });
         }
-
-        let volume = Volume {
-            name: name.to_string(),
-            path: None,
-            repo,
-            status: RepoStatus::Created,
-            containers: HashSet::new(),
-        };
 
         let volume = Arc::new(RwLock::new(volume));
         volumes.insert(name.to_string(), volume.clone());
@@ -120,21 +78,7 @@ impl GitvolState {
 #[cfg(test)]
 pub mod test {
     use super::*;
-
-    pub const VOLUME_NAME: &str = "test_volume";
-    pub const REPO_URL: &str = "https://example.com/repo.git";
-
-    impl Volume {
-        fn new(name: &str) -> Self {
-            Self {
-                name: name.to_string(),
-                containers: HashSet::new(),
-                path: None,
-                repo: Repo::stub(),
-                status: RepoStatus::Cleared,
-            }
-        }
-    }
+    use crate::domains::volume::{Status, test::VOLUME_NAME};
 
     impl GitvolState {
         pub fn stub() -> Self {
@@ -143,7 +87,10 @@ pub mod test {
 
         pub async fn stub_with_create() -> Self {
             let state = Self::stub();
-            state.create(VOLUME_NAME, Repo::stub()).await.unwrap();
+            state
+                .create(VOLUME_NAME, Some(RawRepo::stub()))
+                .await
+                .unwrap();
 
             state
         }
@@ -163,14 +110,13 @@ pub mod test {
     #[tokio::test]
     async fn create_and_read_new_volume() {
         let state = GitvolState::stub();
-        let repo = Repo::stub();
-        state.create(VOLUME_NAME, repo.clone()).await.unwrap();
+        let opts = RawRepo::stub();
+        state.create(VOLUME_NAME, Some(opts.clone())).await.unwrap();
 
         let volume = state.read(VOLUME_NAME).await.unwrap();
 
         assert_eq!(volume.name, VOLUME_NAME);
         assert_eq!(volume.path, None);
-        assert_eq!(volume.repo, repo);
     }
 
     #[tokio::test]
@@ -185,7 +131,7 @@ pub mod test {
     async fn create_volume_with_empty_name() {
         let state = GitvolState::stub();
 
-        let result = state.create("", Repo::stub()).await;
+        let result = state.create("", Some(RawRepo::stub())).await;
 
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -197,7 +143,7 @@ pub mod test {
         let state = GitvolState::stub();
 
         // trimmed volume name
-        let result = state.create("   ", Repo::stub()).await;
+        let result = state.create("   ", Some(RawRepo::stub())).await;
 
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -208,10 +154,10 @@ pub mod test {
     async fn create_duplicate_volume() {
         let state = GitvolState::stub();
 
-        let result1 = state.create(VOLUME_NAME, Repo::stub()).await;
+        let result1 = state.create(VOLUME_NAME, Some(RawRepo::stub())).await;
         assert!(result1.is_ok());
 
-        let result2 = state.create(VOLUME_NAME, Repo::stub()).await;
+        let result2 = state.create(VOLUME_NAME, Some(RawRepo::stub())).await;
         assert!(result2.is_err());
         let error = result2.unwrap_err();
         assert!(error.to_string().contains("already exists"));
@@ -230,13 +176,13 @@ pub mod test {
         let state = GitvolState::stub_with_create().await;
 
         let mut volume = state.write(VOLUME_NAME).await.unwrap();
-        assert_eq!(volume.status, RepoStatus::Created);
+        assert_eq!(volume.status, Status::Created);
 
-        volume.status = RepoStatus::Cleared;
+        volume.status = Status::Cleared;
         drop(volume);
 
         let volume = state.read(VOLUME_NAME).await.unwrap();
-        assert_eq!(volume.status, RepoStatus::Cleared);
+        assert_eq!(volume.status, Status::Cleared);
     }
 
     #[tokio::test]
@@ -264,7 +210,7 @@ pub mod test {
         let mut volumes = state.write_map().await;
         volumes.insert(
             VOLUME_NAME.to_string(),
-            Arc::new(RwLock::new(Volume::new(VOLUME_NAME))),
+            Arc::new(RwLock::new(Volume::stub())),
         );
         drop(volumes);
 

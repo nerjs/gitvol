@@ -7,9 +7,8 @@ use tokio::fs;
 use tracing::{debug, error, field};
 
 use crate::{
-    domains::repo::RawRepo,
+    domains::{repo::RawRepo, volume::Status},
     result::{Error, ErrorIoExt},
-    state::RepoStatus,
 };
 
 // CORE
@@ -70,7 +69,7 @@ pub(super) struct OptionalMp {
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[derive(Serialize)]
 pub(super) struct MpStatus {
-    pub(super) status: RepoStatus,
+    pub(super) status: Status,
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq))]

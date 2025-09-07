@@ -1,12 +1,11 @@
 use super::handlers::*;
 use super::shared::*;
-use crate::domains::repo::RawRepo;
-use crate::domains::repo::Repo;
-use crate::result::Result;
-use crate::state::{
-    GitvolState, RepoStatus,
-    test::{REPO_URL, VOLUME_NAME},
+use crate::domains::{
+    repo::{RawRepo, Repo, test::REPO_URL},
+    volume::test::VOLUME_NAME,
 };
+use crate::result::Result;
+use crate::state::GitvolState;
 use axum::{Json, extract::State};
 use std::path::PathBuf;
 use tempfile::{Builder as TempBuilder, TempDir};
@@ -34,7 +33,10 @@ impl GitvolState {
 
     async fn temp_with_volume() -> (Self, TempDir) {
         let (state, temp_guard) = Self::temp();
-        _ = state.create(VOLUME_NAME, Repo::stub()).await.unwrap();
+        _ = state
+            .create(VOLUME_NAME, Some(RawRepo::stub()))
+            .await
+            .unwrap();
 
         (state, temp_guard)
     }
@@ -159,7 +161,10 @@ mod oneline {
 mod by_state_reactions {
     use tokio::fs;
 
-    use crate::git::test::{TestRepo, is_git_dir};
+    use crate::{
+        domains::volume::Status,
+        git::test::{TestRepo, is_git_dir},
+    };
 
     use super::*;
 
@@ -207,7 +212,7 @@ mod by_state_reactions {
                 name: VOLUME_NAME.to_string(),
                 mountpoint: Some(path),
                 status: MpStatus {
-                    status: RepoStatus::Created
+                    status: Status::Created
                 },
             }
         );
@@ -228,7 +233,7 @@ mod by_state_reactions {
         let path = PathBuf::from("/tmp/test_volume");
         let state = GitvolState::stub_with_path(path).await;
         _ = state
-            .create(&second_volume_name, Repo::stub())
+            .create(&second_volume_name, Some(RawRepo::stub()))
             .await
             .unwrap();
 
@@ -325,7 +330,10 @@ mod by_state_reactions {
     async fn successfully_remove_volume() {
         let (state, temp) = GitvolState::temp();
         let path = temp.path().to_path_buf();
-        state.create(VOLUME_NAME, Repo::stub()).await.unwrap();
+        state
+            .create(VOLUME_NAME, Some(RawRepo::stub()))
+            .await
+            .unwrap();
 
         fs::create_dir_all(&path).await.unwrap();
         fs::write(path.join("some.file"), "contents").await.unwrap();
@@ -356,7 +364,7 @@ mod by_state_reactions {
         let (state, _temp) = GitvolState::temp();
 
         _ = state
-            .create(VOLUME_NAME, Repo::url(&test_repo.file))
+            .create(VOLUME_NAME, Some(RawRepo::from_url(&test_repo.file)))
             .await
             .unwrap();
         let request = NamedWID::stub();
@@ -402,14 +410,17 @@ mod by_state_reactions {
 }
 
 mod usecase {
-    use crate::git::test::{TestRepo, is_git_dir};
+    use crate::{
+        domains::volume::Status,
+        git::test::{TestRepo, is_git_dir},
+    };
 
     use super::*;
 
     #[derive(Clone)]
     struct CheckVol {
         name: String,
-        status: RepoStatus,
+        status: Status,
         mountpoint: Option<PathBuf>,
     }
 
@@ -417,12 +428,12 @@ mod usecase {
         fn new(name: &str) -> Self {
             Self {
                 name: name.to_string(),
-                status: RepoStatus::Created,
+                status: Status::Created,
                 mountpoint: None,
             }
         }
 
-        fn with_status(mut self, status: RepoStatus) -> Self {
+        fn with_status(mut self, status: Status) -> Self {
             self.status = status;
             self
         }
@@ -515,7 +526,7 @@ mod usecase {
     async fn assert_created(state: &GitvolState, list: Vec<&str>) {
         let includes = list
             .into_iter()
-            .map(|name| CheckVol::new(name).with_status(RepoStatus::Created))
+            .map(|name| CheckVol::new(name).with_status(Status::Created))
             .collect::<Vec<CheckVol>>();
         assert_list(state, includes.len(), includes).await;
     }
@@ -607,7 +618,7 @@ mod usecase {
             1,
             vec![
                 CheckVol::stub()
-                    .with_status(RepoStatus::Clonned)
+                    .with_status(Status::Clonned)
                     .with_mp(Some(mountpoint.clone())),
             ],
         )
@@ -652,7 +663,7 @@ mod usecase {
             vec![
                 check_vol
                     .clone()
-                    .with_status(RepoStatus::Clonned)
+                    .with_status(Status::Clonned)
                     .with_mp(Some(mp1.mountpoint.clone())),
             ],
         )
@@ -669,7 +680,7 @@ mod usecase {
             vec![
                 check_vol
                     .clone()
-                    .with_status(RepoStatus::Clonned)
+                    .with_status(Status::Clonned)
                     .with_mp(Some(mp2.mountpoint.clone())),
             ],
         )
@@ -685,7 +696,7 @@ mod usecase {
             vec![
                 check_vol
                     .clone()
-                    .with_status(RepoStatus::Clonned)
+                    .with_status(Status::Clonned)
                     .with_mp(Some(mp2.mountpoint.clone())),
             ],
         )
@@ -698,12 +709,7 @@ mod usecase {
         assert_list(
             &state,
             1,
-            vec![
-                check_vol
-                    .clone()
-                    .with_status(RepoStatus::Cleared)
-                    .with_mp(None),
-            ],
+            vec![check_vol.clone().with_status(Status::Cleared).with_mp(None)],
         )
         .await;
         assert!(!mp1.mountpoint.exists());

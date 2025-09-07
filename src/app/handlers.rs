@@ -3,12 +3,7 @@ use serde_json::json;
 use tokio::fs;
 use tracing::{debug, field, warn};
 
-use crate::{
-    domains::repo::Repo,
-    git,
-    result::ErrorIoExt,
-    state::{GitvolState, RepoStatus},
-};
+use crate::{domains::volume::Status, git, result::ErrorIoExt, state::GitvolState};
 
 use super::shared::*;
 
@@ -91,10 +86,7 @@ pub(super) async fn create_volume(
     State(state): State<GitvolState>,
     Json(RawCreateRequest { name, opts }): Json<RawCreateRequest>,
 ) -> Result<Empty> {
-    debug!(name, "Attempting to create volume.");
-    let repo: Repo = Repo::try_from(opts)?;
-
-    state.create(&name, repo).await?;
+    state.create(&name, opts).await?;
     debug!(name, "Volume created successfully.");
     Ok(Empty {})
 }
@@ -139,7 +131,7 @@ pub(super) async fn mount_volume_to_container(
         });
     }
 
-    let path = state.path.join(volume.build_path());
+    let path = volume.create_path_from(&state.path);
     if path.exists() {
         debug!(name, id, "Repository directory already exists. Remooving");
         fs::remove_dir_all(&path).await.map_io_error(&path)?;
@@ -147,8 +139,7 @@ pub(super) async fn mount_volume_to_container(
     git::clone(&path, &volume.repo).await?;
 
     volume.containers.insert(id.clone());
-    volume.path = Some(path.clone());
-    volume.status = RepoStatus::Clonned;
+    volume.status = Status::Clonned;
 
     debug!(name, id, "Volume mounted successfully.");
     Ok(Mp { mountpoint: path })
@@ -175,7 +166,7 @@ pub(super) async fn unmount_volume_by_container(
         return Ok(Empty {});
     }
 
-    volume.status = RepoStatus::Cleared;
+    volume.status = Status::Cleared;
     remove_dir_if_exists(volume.path.clone()).await?;
     volume.path = None;
 
