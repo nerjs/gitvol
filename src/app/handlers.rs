@@ -3,7 +3,12 @@ use serde_json::json;
 use tokio::fs;
 use tracing::{debug, field, warn};
 
-use crate::{domains::volume::Status, git, result::ErrorIoExt, state::GitvolState};
+use crate::{
+    domains::volume::{Status, Volume},
+    git,
+    result::ErrorIoExt,
+    state::GitvolState,
+};
 
 use super::shared::*;
 
@@ -65,21 +70,19 @@ pub(super) async fn get_volume(
 
 pub(super) async fn list_volumes(State(state): State<GitvolState>) -> Result<ListResponse> {
     debug!("Retrieving list of volumes.");
-    let map_volumes = state.read_map().await;
+    let list = state.read_all().await;
 
-    let mut volumes: Vec<ListMp> = Vec::with_capacity(map_volumes.len());
+    debug!(count = list.len(), "Retrieved volumes list.");
 
-    for volume in map_volumes.clone().into_values() {
-        let volume = volume.read().await;
-        volumes.push(ListMp {
-            name: volume.name.clone(),
-            mountpoint: volume.path.clone(),
-        });
-    }
-
-    debug!(count = volumes.len(), "Retrieved volumes list.");
-
-    Ok(ListResponse { volumes })
+    Ok(ListResponse {
+        volumes: list
+            .into_iter()
+            .map(|Volume { name, path, .. }| ListMp {
+                name,
+                mountpoint: path,
+            })
+            .collect(),
+    })
 }
 
 pub(super) async fn create_volume(
@@ -96,17 +99,13 @@ pub(super) async fn remove_volume(
     Json(Named { name }): Json<Named>,
 ) -> Result<Empty> {
     debug!(name, "Attempting to remove volume.");
-    let mut volumes = state.write_map().await;
 
-    let Some(volume) = volumes.get(&name) else {
+    let Some(volume) = state.remove(&name).await else {
         warn!(name, "Volume not found.");
         return Ok(Empty {});
     };
 
-    let volume = volume.read().await;
     remove_dir_if_exists(volume.path.clone()).await?;
-    drop(volume);
-    volumes.remove(&name);
 
     debug!(name, "Volume removed successfully.");
     Ok(Empty {})

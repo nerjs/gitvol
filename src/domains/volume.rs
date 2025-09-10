@@ -31,7 +31,8 @@ pub enum Status {
     Cleared,
 }
 
-#[cfg_attr(test, derive(Debug, Clone))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+#[derive(Clone)]
 pub struct Volume {
     pub name: String,
     pub path: Option<PathBuf>,
@@ -96,11 +97,11 @@ pub mod test {
 
     pub const VOLUME_NAME: &str = "volume_name_99";
 
-    impl Volume {
-        pub fn stub() -> Self {
-            Self::try_from((VOLUME_NAME, Some(RawRepo::stub()))).unwrap()
-        }
-    }
+    // impl Volume {
+    //     pub fn stub() -> Self {
+    //         Self::try_from((VOLUME_NAME, Some(RawRepo::stub()))).unwrap()
+    //     }
+    // }
 
     #[test]
     fn missing_options() {

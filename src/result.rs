@@ -11,12 +11,6 @@ pub enum Error {
     #[error("Socket {:?} do not have patent path", .0)]
     MissingSocketParent(PathBuf),
 
-    #[error("Volume named '{name}' already exists")]
-    VolumeAlreadyExists { name: String },
-
-    #[error("Non existen volume named {:?}", .0)]
-    VolumeNonExists(String),
-
     #[error("repository URL  parsing: {}", .0.to_string())]
     Url(#[from] crate::domains::url::Error),
 
@@ -25,6 +19,8 @@ pub enum Error {
 
     #[error(transparent)]
     Volume(#[from] crate::domains::volume::Error),
+    #[error(transparent)]
+    Volumes(#[from] crate::services::volumes::Error),
 
     #[error("Failed to execute command '{cmd} {args:?}' with reason: {reason:?}")]
     Cmd {
