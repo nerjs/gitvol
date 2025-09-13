@@ -1,11 +1,12 @@
 mod app;
 mod domains;
+mod driver;
 mod git;
 mod macros;
+mod plugin;
 mod result;
 mod services;
 mod split_tracing;
-mod state;
 
 use std::{fmt::Debug, os::unix::fs::FileTypeExt, path::PathBuf};
 
@@ -19,8 +20,8 @@ use tracing::{
 };
 
 use crate::{
+    plugin::Plugin,
     result::{Error, ErrorIoExt, Result},
-    state::GitvolState,
 };
 
 #[tokio::main]
@@ -38,8 +39,8 @@ async fn main() -> Result<()> {
             .map_io_error(&settings.socket)?;
     }
 
-    let state = GitvolState::new(settings.mount_path);
-    let app = app::create(state);
+    let plugin = Plugin::new(&settings.mount_path);
+    let app = app::create(plugin);
     let listener = UnixListener::bind(&settings.socket).map_io_error(&settings.socket)?;
     info!("listening on {:?}", listener.local_addr().unwrap());
 

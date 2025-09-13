@@ -8,7 +8,7 @@ print_err() {
 }
 
 PLUGIN_NAME="nerjs/gitvol"
-VERSION=$(cargo run --quiet -- --version | awk '{split($0,a," "); print a[2]}') || print_err "Failed to get version from cargo"
+VERSION=$(RUST_LOG=error cargo run --quiet -- --version | awk '{split($0,a," "); print a[2]}') || print_err "Failed to get version from cargo"
 BUILD_IMAGE="${PLUGIN_NAME}_rootfs_image"
 BUILD_PATH="$PWD/build"
 ROOTFS_PATH="$BUILD_PATH/rootfs"
@@ -90,8 +90,6 @@ create_plugin() {
     echo "[INFO] Creating plugin: ${PLUGIN_NAME}:${1}"
     docker plugin create "${PLUGIN_NAME}:${1}" "$BUILD_PATH" || print_err "Failed to create plugin"
 }
-
-
 
 build_rootfs_image
 create_plugin $VERSION

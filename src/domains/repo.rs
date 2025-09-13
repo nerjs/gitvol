@@ -24,8 +24,8 @@ pub struct Repo {
     pub refetch: bool,
 }
 
-#[cfg_attr(test, derive(Default, Clone, Debug))]
-#[derive(Deserialize)]
+#[cfg_attr(test, derive(Default, Clone))]
+#[derive(Debug, Deserialize)]
 pub struct RawRepo {
     pub url: Option<String>,
     pub branch: Option<String>,

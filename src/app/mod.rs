@@ -3,7 +3,7 @@ mod shared;
 #[cfg(test)]
 mod tests;
 
-use crate::state::GitvolState;
+use crate::plugin::Plugin;
 use axum::{
     Router,
     extract::Request,
@@ -15,7 +15,7 @@ use axum::{
 use handlers::*;
 use tracing::{Instrument, info_span};
 
-pub fn create(state: GitvolState) -> Router {
+pub fn create(plugin: Plugin) -> Router {
     Router::new()
         .route("/Plugin.Activate", post(activate_plugin))
         .route("/VolumeDriver.Capabilities", post(capabilities_handler))
@@ -27,7 +27,7 @@ pub fn create(state: GitvolState) -> Router {
         .route("/VolumeDriver.Mount", post(mount_volume_to_container))
         .route("/VolumeDriver.Unmount", post(unmount_volume_by_container))
         .layer(middleware::from_fn(transform_headers))
-        .with_state(state)
+        .with_state(plugin)
 }
 
 async fn transform_headers(mut request: Request, next: Next) -> Response {

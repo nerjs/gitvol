@@ -4,47 +4,16 @@ use crate::domains::{
     repo::{RawRepo, Repo, test::REPO_URL},
     volume::test::VOLUME_NAME,
 };
-use crate::result::Result;
-use crate::state::GitvolState;
 use axum::{Json, extract::State};
 use std::path::PathBuf;
-use tempfile::{Builder as TempBuilder, TempDir};
+use tokio::fs;
 use uuid::Uuid;
 
-impl GitvolState {
-    pub async fn set_path(&self, name: &str, path: impl Into<PathBuf>) -> Result<()> {
-        let mut volume = self.try_write(name).await?;
-        volume.path = Some(path.into());
-        Ok(())
-    }
-
-    async fn stub_with_path(path: impl Into<PathBuf>) -> Self {
-        let state = Self::stub_with_create().await;
-        let mut volume = state.try_write(VOLUME_NAME).await.unwrap();
-        volume.path = Some(path.into());
-
-        state
-    }
-
-    fn temp() -> (Self, TempDir) {
-        let temp = TempBuilder::new().prefix("temp-gitvol-").tempdir().unwrap();
-        (Self::new(temp.path().to_path_buf()), temp)
-    }
-
-    async fn temp_with_volume() -> (Self, TempDir) {
-        let (state, temp_guard) = Self::temp();
-        _ = state
-            .create(VOLUME_NAME, Some(RawRepo::stub()))
-            .await
-            .unwrap();
-
-        (state, temp_guard)
-    }
-
-    fn req(&self) -> State<Self> {
-        State(self.clone())
-    }
-}
+use crate::{
+    domains::volume::Status,
+    git::test::{TestRepo, is_git_dir},
+    plugin::{Plugin, Status as PluginStatus},
+};
 
 impl Named {
     fn new(name: &str) -> Self {
@@ -159,18 +128,14 @@ mod oneline {
 }
 
 mod by_state_reactions {
-    use tokio::fs;
 
-    use crate::{
-        domains::volume::Status,
-        git::test::{TestRepo, is_git_dir},
-    };
+    use crate::driver::Driver;
 
     use super::*;
 
     #[tokio::test]
     async fn get_path_if_non_existent_volume() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let result = get_volume_path(State(state), Named::stub().req()).await;
 
         assert!(result.is_ok());
@@ -181,7 +146,7 @@ mod by_state_reactions {
     #[tokio::test]
     async fn successfully_get_volume_path() {
         let path = PathBuf::from("/tmp/test_path");
-        let state = GitvolState::stub_with_path(&path).await;
+        let state = Plugin::stub_with_path(&path).await;
 
         let result = get_volume_path(State(state), Named::stub().req()).await;
 
@@ -192,7 +157,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn get_volume_if_non_existent_volume() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let result = get_volume(State(state), Named::stub().req()).await;
         assert!(result.is_err());
     }
@@ -200,7 +165,7 @@ mod by_state_reactions {
     #[tokio::test]
     async fn successfully_get_volume() {
         let path = PathBuf::from("/tmp/test_volume");
-        let state = GitvolState::stub_with_path(&path).await;
+        let state = Plugin::stub_with_path(&path).await;
 
         let result = get_volume(State(state), Named::stub().req()).await;
 
@@ -211,7 +176,7 @@ mod by_state_reactions {
             GetMp {
                 name: VOLUME_NAME.to_string(),
                 mountpoint: Some(path),
-                status: MpStatus {
+                status: PluginStatus {
                     status: Status::Created
                 },
             }
@@ -220,7 +185,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn empty_list_volumes() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let result = list_volumes(State(state)).await;
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -231,11 +196,8 @@ mod by_state_reactions {
     async fn non_empty_list_volumes() {
         let second_volume_name = format!("{}_2", VOLUME_NAME);
         let path = PathBuf::from("/tmp/test_volume");
-        let state = GitvolState::stub_with_path(path).await;
-        _ = state
-            .create(&second_volume_name, Some(RawRepo::stub()))
-            .await
-            .unwrap();
+        let state = Plugin::stub_with_path(&path).await;
+        state.create_volume(&second_volume_name).await.unwrap();
 
         let result = list_volumes(State(state)).await;
         assert!(result.is_ok());
@@ -254,7 +216,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn create_volume_missing_opt() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let result = create_volume(State(state.clone()), RawCreateRequest::req()).await;
 
         assert!(result.is_err());
@@ -262,7 +224,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn create_volume_missing_url() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let request = RawCreateRequest::stub()
             .with_opts(RawRepo::default())
             .to_req();
@@ -274,7 +236,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn create_handler_state_incorrect_name_error() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         // empty trimmed name
         let request = RawCreateRequest::new("  ").with_url(REPO_URL).to_req();
         let result = create_volume(State(state.clone()), request).await;
@@ -284,7 +246,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn create_volume_multiple_refs() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let request = RawCreateRequest::new(VOLUME_NAME)
             .with_url(REPO_URL)
             .with_branch("branch")
@@ -298,7 +260,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn create_volume_state_duplicate_error() {
-        let state = GitvolState::stub_with_create().await;
+        let state = Plugin::stub_with_volume().await;
         let result = create_volume(
             State(state.clone()),
             RawCreateRequest::stub_with_url().to_req(),
@@ -310,7 +272,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn successfully_create_volume() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let result = create_volume(
             State(state.clone()),
             RawCreateRequest::stub_with_url().to_req(),
@@ -328,16 +290,12 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn successfully_remove_volume() {
-        let (state, temp) = GitvolState::temp();
+        let (state, temp) = Plugin::temp_with_volume().await;
         let path = temp.path().to_path_buf();
-        state
-            .create(VOLUME_NAME, Some(RawRepo::stub()))
-            .await
-            .unwrap();
 
         fs::create_dir_all(&path).await.unwrap();
         fs::write(path.join("some.file"), "contents").await.unwrap();
-        state.set_path(VOLUME_NAME, &path).await.unwrap();
+        state.set_path(VOLUME_NAME, &path).await;
 
         assert!(path.exists());
         let result = remove_volume(State(state.clone()), Named::stub().req()).await;
@@ -352,7 +310,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn failed_mount_by_non_existent_volume() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let result = mount_volume_to_container(State(state), NamedWID::req()).await;
 
         assert!(result.is_err());
@@ -361,9 +319,8 @@ mod by_state_reactions {
     #[tokio::test]
     async fn successfully_mount_volume() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _temp) = GitvolState::temp();
-
-        _ = state
+        let (state, _temp) = Plugin::temp();
+        state
             .create(VOLUME_NAME, Some(RawRepo::from_url(&test_repo.file)))
             .await
             .unwrap();
@@ -382,7 +339,7 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn failed_unmount_by_non_existent_volume() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         let result = unmount_volume_by_container(State(state), NamedWID::req()).await;
 
         assert!(result.is_ok());
@@ -390,10 +347,10 @@ mod by_state_reactions {
 
     #[tokio::test]
     async fn successfully_unmount_volume() {
-        let (state, temp) = GitvolState::temp_with_volume().await;
+        let (state, temp) = Plugin::temp_with_volume().await;
         let request = NamedWID::stub();
         let path = temp.path().join("volume_path");
-        let mut volume = state.try_write(VOLUME_NAME).await.unwrap();
+        let mut volume = state.try_write(VOLUME_NAME).await;
         volume.containers.insert(request.id.clone());
         volume.path = Some(path.clone());
         drop(volume);
@@ -448,7 +405,7 @@ mod usecase {
         }
     }
 
-    async fn assert_list(state: &GitvolState, len: usize, includes: Vec<CheckVol>) {
+    async fn assert_list(state: &Plugin, len: usize, includes: Vec<CheckVol>) {
         let ListResponse { volumes } = list_volumes(state.req()).await.unwrap();
 
         let msg = if len == 0 {
@@ -487,7 +444,7 @@ mod usecase {
             let volume_from_get = get_response.unwrap().volume;
 
             assert_eq!(
-                MpStatus {
+                PluginStatus {
                     status: status.clone()
                 },
                 volume_from_get.status,
@@ -519,11 +476,11 @@ mod usecase {
         }
     }
 
-    async fn assert_empty_list(state: &GitvolState) {
+    async fn assert_empty_list(state: &Plugin) {
         assert_list(state, 0, Vec::new()).await;
     }
 
-    async fn assert_created(state: &GitvolState, list: Vec<&str>) {
+    async fn assert_created(state: &Plugin, list: Vec<&str>) {
         let includes = list
             .into_iter()
             .map(|name| CheckVol::new(name).with_status(Status::Created))
@@ -531,18 +488,18 @@ mod usecase {
         assert_list(state, includes.len(), includes).await;
     }
 
-    async fn assert_created_stub(state: &GitvolState) {
+    async fn assert_created_stub(state: &Plugin) {
         assert_created(state, vec![VOLUME_NAME]).await
     }
 
     #[tokio::test]
     async fn emply_before_working() {
-        assert_empty_list(&GitvolState::stub()).await;
+        assert_empty_list(&Plugin::stub()).await;
     }
 
     #[tokio::test]
     async fn onetime_creating_volume() {
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         assert_empty_list(&state).await;
 
         _ = create_volume(state.req(), RawCreateRequest::stub_with_url().to_req())
@@ -562,7 +519,7 @@ mod usecase {
         let first_vol = "first";
         let second_vol = "second";
 
-        let state = GitvolState::stub();
+        let state = Plugin::stub();
         assert_empty_list(&state).await;
 
         _ = create_volume(
@@ -597,7 +554,7 @@ mod usecase {
     #[tokio::test]
     async fn onetime_creating_and_mounting_volume() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = GitvolState::temp();
+        let (state, _) = Plugin::temp();
         assert_empty_list(&state).await;
 
         _ = create_volume(
@@ -642,7 +599,7 @@ mod usecase {
         let named_2 = NamedWID::stub();
         let check_vol = CheckVol::stub();
 
-        let (state, _) = GitvolState::temp();
+        let (state, _) = Plugin::temp();
         assert_empty_list(&state).await;
 
         _ = create_volume(
@@ -718,7 +675,7 @@ mod usecase {
     #[tokio::test]
     async fn create_and_mount_default_branch() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = GitvolState::temp();
+        let (state, _) = Plugin::temp();
 
         let _ = create_volume(
             state.req(),
@@ -737,7 +694,7 @@ mod usecase {
     #[tokio::test]
     async fn create_and_mount_specific_branch() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = GitvolState::temp();
+        let (state, _) = Plugin::temp();
 
         let _ = create_volume(
             state.req(),
@@ -759,7 +716,7 @@ mod usecase {
     #[tokio::test]
     async fn create_and_mount_tag() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = GitvolState::temp();
+        let (state, _) = Plugin::temp();
 
         let _ = create_volume(
             state.req(),
@@ -781,7 +738,7 @@ mod usecase {
     #[tokio::test]
     async fn create_refetchable_and_mount_twice() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = GitvolState::temp();
+        let (state, _) = Plugin::temp();
         let branch_name = format!("branch_{}", Uuid::new_v4().to_string());
 
         test_repo.setup_temp_branch(&branch_name).await.unwrap();

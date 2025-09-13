@@ -46,6 +46,9 @@ pub enum Error {
     #[cfg(test)]
     #[error("Temporary test file {file:?} not found or not a file")]
     TestTmpNotExists { file: PathBuf },
+
+    #[error("{0}")]
+    String(String),
 }
 
 pub trait ErrorIoExt<T> {

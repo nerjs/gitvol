@@ -3,13 +3,9 @@ use std::path::PathBuf;
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::fs;
-use tracing::{debug, error, field};
+use tracing::error;
 
-use crate::{
-    domains::{repo::RawRepo, volume::Status},
-    result::{Error, ErrorIoExt},
-};
+use crate::{domains::repo::RawRepo, plugin::Status, result::Error};
 
 // CORE
 
@@ -68,19 +64,13 @@ pub(super) struct OptionalMp {
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[derive(Serialize)]
-pub(super) struct MpStatus {
-    pub(super) status: Status,
-}
-
-#[cfg_attr(test, derive(Debug, PartialEq))]
-#[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub(super) struct GetMp {
     pub(super) name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) mountpoint: Option<PathBuf>,
     // TODO: format must be an object/ example: {"CreatedAt": "2025-08-24T19:44:31", "Size": "10GB", "Available": "5GB"}
-    pub(super) status: MpStatus,
+    pub(super) status: Status,
 }
 
 #[cfg_attr(test, derive(Debug))]
@@ -123,16 +113,3 @@ macro_rules! into_response {
 }
 
 into_response!(Mp, OptionalMp, GetResponse, ListResponse, Empty);
-
-// HELPERS
-
-pub(super) async fn remove_dir_if_exists(path: Option<PathBuf>) -> crate::result::Result<()> {
-    if let Some(path) = path
-        && path.exists()
-    {
-        debug!(path = field::debug(&path), "Attempting to remove directory");
-        fs::remove_dir_all(&path).await.map_io_error(&path)?;
-    }
-
-    Ok(())
-}
