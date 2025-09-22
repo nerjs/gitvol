@@ -15,7 +15,7 @@ clap = { version = "4.5.45", default-features = false, features = ["derive", "st
 thiserror = "2.0.16"
 
 # broken deps
-git-url-parse = "0.4.5"
+git-url-parse = "0.6.0"
 url = { version = "2.5.4" }
 
 [dev-dependencies]
