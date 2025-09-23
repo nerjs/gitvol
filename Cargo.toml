@@ -14,10 +14,8 @@ tokio-stream = "0.1.17"
 clap = { version = "4.5.48", default-features = false, features = ["derive", "std", "help"] }
 thiserror = "2.0.16"
 async-trait = "0.1.89"
-
-# broken deps
 git-url-parse = "0.4.5"
-url = { version = "2.5.4" }
+
 
 [dev-dependencies]
 axum-test = "18.1.0"
