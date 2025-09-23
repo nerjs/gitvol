@@ -162,11 +162,12 @@ async fn remove_dir_if_exists(path: Option<PathBuf>) -> crate::result::Result<()
 
 #[cfg(test)]
 mod test_mocks {
-    use crate::{domains::volume::test::VOLUME_NAME, git::test::TestRepo};
-    use std::ops::Deref;
-
     use super::*;
+    use crate::git::test::TestRepo;
+    use std::ops::Deref;
     use tempfile::{Builder as TempBuilder, TempDir};
+
+    pub const VOLUME_NAME: &str = "test_volume";
 
     pub struct TempPlugin {
         plugin: Plugin,
@@ -214,15 +215,6 @@ mod test_mocks {
 
         pub async fn with_stub_volume(self) -> Self {
             self.with_volume(VOLUME_NAME, RawRepo::stub()).await
-        }
-
-        pub async fn temp_with_volume() -> (Self, TempDir) {
-            let plugin = Self::temp();
-            plugin
-                .create(VOLUME_NAME, Some(RawRepo::stub()))
-                .await
-                .unwrap();
-            (plugin.plugin, plugin.temp)
         }
 
         pub async fn test_is_empty_list(&self) -> &Self {
@@ -319,58 +311,12 @@ mod test_mocks {
 
 #[cfg(test)]
 mod test {
+    use super::test_mocks::*;
+    use super::*;
+    use rstest::rstest;
     use std::ops::Deref;
 
-    use axum::extract::State;
-    use rstest::rstest;
-    use tokio::sync::OwnedRwLockWriteGuard;
-
-    use crate::{
-        domains::volume::{Volume, test::VOLUME_NAME},
-        git::test::{TestRepo, is_git_dir},
-    };
-
-    use super::*;
-
-    impl Plugin {
-        pub async fn create_volume(&self, name: &str) -> Result<(), Error> {
-            self.create(name, Some(RawRepo::stub())).await?;
-            Ok(())
-        }
-
-        pub async fn set_path(&self, name: &str, path: &Path) {
-            let mut volume = self.volumes.try_write(name).await.unwrap();
-            volume.path = Some(path.to_path_buf());
-        }
-
-        pub async fn stub_with_volume() -> Self {
-            let plugin = Self::stub();
-            plugin
-                .create(VOLUME_NAME, Some(RawRepo::stub()))
-                .await
-                .unwrap();
-            plugin
-        }
-
-        pub async fn stub_with_path(path: &Path) -> Self {
-            let plugin = Self::stub_with_volume().await;
-            plugin.set_path(VOLUME_NAME, path).await;
-            plugin
-        }
-
-        pub async fn read(&self, name: &str) -> Option<Volume> {
-            let vol = self.volumes.read(name).await;
-            vol.map(|v| v.clone())
-        }
-
-        pub async fn try_write(&self, name: &str) -> OwnedRwLockWriteGuard<Volume> {
-            self.volumes.try_write(name).await.unwrap()
-        }
-
-        pub fn req(&self) -> State<Self> {
-            State(self.clone())
-        }
-    }
+    use crate::git::test::{TestRepo, is_git_dir};
 
     #[tokio::test]
     async fn list_empty_initial() {

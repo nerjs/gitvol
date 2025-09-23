@@ -1,4 +1,3 @@
-mod app;
 mod domains;
 mod driver;
 mod git;
@@ -20,6 +19,7 @@ use tracing::{
 };
 
 use crate::{
+    driver::Driver,
     plugin::Plugin,
     result::{Error, ErrorIoExt, Result},
 };
@@ -39,12 +39,11 @@ async fn main() -> Result<()> {
             .map_io_error(&settings.socket)?;
     }
 
-    let plugin = Plugin::new(&settings.mount_path);
-    let app = app::create(plugin);
+    let plugin = Plugin::new(&settings.mount_path).into_router();
     let listener = UnixListener::bind(&settings.socket).map_io_error(&settings.socket)?;
     info!("listening on {:?}", listener.local_addr().unwrap());
 
-    serve(listener, app.into_make_service())
+    serve(listener, plugin)
         .await
         .map_io_error(&format!("serve: {:?}", settings.socket))?;
 
