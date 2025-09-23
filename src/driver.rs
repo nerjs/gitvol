@@ -21,7 +21,7 @@ pub struct ItemVolume {
     pub mountpoint: Option<PathBuf>,
 }
 
-#[cfg_attr(test, derive(Clone))]
+#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
 pub struct VolumeInfo<S> {
     pub mountpoint: Option<PathBuf>,
     pub status: S,
@@ -29,15 +29,18 @@ pub struct VolumeInfo<S> {
 
 #[async_trait::async_trait]
 pub trait Driver: Clone + Send + Sync + 'static {
-    type Error: std::error::Error + Send + Sync + 'static;
-    type Status: Serialize + Send + Sync + 'static;
-    type Opts: DeserializeOwned + Debug + Send + Sync + 'static;
+    type Error: std::error::Error;
+    type Status: Serialize;
+    type Opts: DeserializeOwned + Debug + Send;
 
     async fn activate(&self) -> Result<Vec<String>, Self::Error> {
         Ok(vec!["VolumeDriver".to_string()])
     }
 
-    async fn capabilities(&self) -> Result<Scope, Self::Error>;
+    async fn capabilities(&self) -> Result<Scope, Self::Error> {
+        Ok(Scope::Global)
+    }
+
     async fn path(&self, name: &str) -> Result<Option<PathBuf>, Self::Error>;
     async fn get(&self, name: &str) -> Result<VolumeInfo<Self::Status>, Self::Error>;
     async fn list(&self) -> Result<Vec<ItemVolume>, Self::Error>;
@@ -407,11 +410,6 @@ mod test_mocks {
         type Error = StrError;
         type Status = String;
         type Opts = String;
-
-        async fn capabilities(&self) -> Result<Scope, Self::Error> {
-            self.check_error().await?;
-            Ok(Scope::Global)
-        }
 
         async fn path(&self, name: &str) -> Result<Option<PathBuf>, Self::Error> {
             self.check_error().await?;

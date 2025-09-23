@@ -319,7 +319,7 @@ mod by_state_reactions {
     #[tokio::test]
     async fn successfully_mount_volume() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _temp) = Plugin::temp();
+        let state = Plugin::temp();
         state
             .create(VOLUME_NAME, Some(RawRepo::from_url(&test_repo.file)))
             .await
@@ -554,7 +554,7 @@ mod usecase {
     #[tokio::test]
     async fn onetime_creating_and_mounting_volume() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = Plugin::temp();
+        let state = Plugin::temp();
         assert_empty_list(&state).await;
 
         _ = create_volume(
@@ -599,7 +599,7 @@ mod usecase {
         let named_2 = NamedWID::stub();
         let check_vol = CheckVol::stub();
 
-        let (state, _) = Plugin::temp();
+        let state = Plugin::temp();
         assert_empty_list(&state).await;
 
         _ = create_volume(
@@ -675,7 +675,7 @@ mod usecase {
     #[tokio::test]
     async fn create_and_mount_default_branch() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = Plugin::temp();
+        let state = Plugin::temp();
 
         let _ = create_volume(
             state.req(),
@@ -694,7 +694,7 @@ mod usecase {
     #[tokio::test]
     async fn create_and_mount_specific_branch() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = Plugin::temp();
+        let state = Plugin::temp();
 
         let _ = create_volume(
             state.req(),
@@ -716,7 +716,7 @@ mod usecase {
     #[tokio::test]
     async fn create_and_mount_tag() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = Plugin::temp();
+        let state = Plugin::temp();
 
         let _ = create_volume(
             state.req(),
@@ -738,7 +738,7 @@ mod usecase {
     #[tokio::test]
     async fn create_refetchable_and_mount_twice() {
         let test_repo = TestRepo::get_or_create().await.unwrap();
-        let (state, _) = Plugin::temp();
+        let state = Plugin::temp();
         let branch_name = format!("branch_{}", Uuid::new_v4().to_string());
 
         test_repo.setup_temp_branch(&branch_name).await.unwrap();
