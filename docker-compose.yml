@@ -17,7 +17,7 @@ services:
 volumes:
   my-vol:
     driver: nerjs/gitvol:latest
-    name: mv_v6
+    name: mv_v7
     driver_opts:
       url: https://github.com/nerjs/gitvol-test.git
       refetch: "true"

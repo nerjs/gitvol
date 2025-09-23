@@ -24,8 +24,8 @@ pub struct Repo {
     pub refetch: bool,
 }
 
-#[cfg_attr(test, derive(Default, Clone, Debug))]
-#[derive(Deserialize)]
+#[cfg_attr(test, derive(Default, Clone))]
+#[derive(Debug, Deserialize)]
 pub struct RawRepo {
     pub url: Option<String>,
     pub branch: Option<String>,
@@ -72,19 +72,6 @@ pub mod test {
 
     pub const REPO_URL: &str = "https://example.com/repo.git";
 
-    impl Repo {
-        pub fn stub() -> Self {
-            Self::from_url(REPO_URL)
-        }
-
-        pub fn from_url(url: &str) -> Self {
-            Self {
-                url: Url::from_str(url).unwrap(),
-                branch: None,
-                refetch: false,
-            }
-        }
-    }
     impl RawRepo {
         pub fn stub() -> Self {
             Self::from_url(REPO_URL)
