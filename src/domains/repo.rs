@@ -1,6 +1,6 @@
 use super::url::Url;
 use serde::Deserialize;
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 use tracing::debug;
 
 #[cfg_attr(test, derive(PartialEq))]
@@ -22,6 +22,12 @@ pub struct Repo {
     pub url: Url,
     pub branch: Option<String>,
     pub refetch: bool,
+}
+
+impl Display for Repo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.url.fmt(f)
+    }
 }
 
 #[cfg_attr(test, derive(Default, Clone))]
