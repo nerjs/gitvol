@@ -2,135 +2,31 @@ mod domains;
 mod driver;
 mod macros;
 mod plugin;
-mod result;
 mod services;
+mod settings;
 mod split_tracing;
 
-use std::{fmt::Debug, os::unix::fs::FileTypeExt, path::PathBuf};
-
 use axum::serve;
-use clap::Parser;
 use tokio::{fs, net::UnixListener};
-use tracing::{
-    debug,
-    field::{self},
-    info, instrument,
-};
 
-use crate::{
-    driver::Driver,
-    plugin::Plugin,
-    result::{Error, ErrorIoExt, Result},
-    services::git::Git,
-};
+use crate::{driver::Driver, plugin::Plugin, services::git::Git, settings::Settings};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     split_tracing::init();
 
-    debug!("tratata");
     let settings = Settings::parse().await?;
 
     if settings.socket.exists() {
-        fs::remove_file(&settings.socket)
-            .await
-            .map_io_error(&settings.socket)?;
+        fs::remove_file(&settings.socket).await?;
     }
 
-    let git = Git::init().await.unwrap();
+    let git = Git::init().await?;
     let plugin = Plugin::new(&settings.mount_path, git).into_router();
-    let listener = UnixListener::bind(&settings.socket).map_io_error(&settings.socket)?;
-    info!("listening on {:?}", listener.local_addr().unwrap());
+    let listener = UnixListener::bind(&settings.socket)?;
+    println!("listening on {:?}", listener.local_addr().unwrap());
 
-    serve(listener, plugin)
-        .await
-        .map_io_error(&format!("serve: {:?}", settings.socket))?;
+    serve(listener, plugin).await?;
 
     Ok(())
-}
-
-#[derive(Debug, clap::Parser)]
-#[command(version, about)]
-struct Args {
-    #[arg(short, long)]
-    socket: Option<PathBuf>,
-
-    #[arg(short, long)]
-    mount_path: Option<PathBuf>,
-}
-
-#[derive(Debug)]
-struct Settings {
-    socket: PathBuf,
-    mount_path: PathBuf,
-}
-
-impl Settings {
-    #[instrument(name = "settings")]
-    async fn parse() -> Result<Self> {
-        let args = Args::parse();
-        debug!(args = field::debug(&args), "parsing cli args.");
-
-        let current_dir = std::env::current_dir().map_io_error("current dir")?;
-
-        let mut socket = args
-            .socket
-            .unwrap_or_else(|| current_dir.join("gitvol_socket/plugin.sock"));
-        if !socket.is_absolute() {
-            socket = current_dir.join(socket);
-            debug!(
-                socket = field::debug(&socket),
-                "Relative socket path. fixed this."
-            );
-        }
-
-        let mut mount_path = args
-            .mount_path
-            .unwrap_or_else(|| current_dir.join("gitvol_volumes"));
-        if !mount_path.is_absolute() {
-            mount_path = current_dir.join(mount_path);
-            debug!(
-                mount_path = field::debug(&mount_path),
-                "Relative mount path. fixed this."
-            );
-        }
-
-        if socket.exists() {
-            let socket_metadata = fs::metadata(socket.clone())
-                .await
-                .map_io_error(&socket)?
-                .file_type();
-            if !socket_metadata.is_socket() {
-                return Err(Error::NoSocket(socket.clone()));
-            }
-            debug!("Socket already exists.");
-        } else {
-            let Some(socket_parent) = socket.parent() else {
-                return Err(Error::MissingSocketParent(socket.clone()));
-            };
-            debug!(
-                socket_parent = field::debug(&socket_parent),
-                "Trying to create socket parent dir."
-            );
-            fs::create_dir_all(&socket_parent)
-                .await
-                .map_io_error(&socket_parent)?;
-        }
-
-        if mount_path.exists() {
-            if !mount_path.is_dir() {
-                return Err(Error::NoDirMountingPath(mount_path.clone()));
-            }
-        } else {
-            debug!(
-                mount_path = field::debug(&mount_path),
-                "Trying to create mount dir."
-            );
-            fs::create_dir_all(&mount_path)
-                .await
-                .map_io_error(&mount_path)?;
-        }
-
-        Ok(Self { socket, mount_path })
-    }
 }

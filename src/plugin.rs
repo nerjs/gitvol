@@ -1,6 +1,8 @@
-use crate::result::ErrorIoExt;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::{
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 use tokio::fs;
 
 use crate::{
@@ -18,10 +20,14 @@ pub enum Error {
     Volumes(#[from] VolumesError),
 
     #[error(transparent)]
-    App(#[from] crate::result::Error),
-
-    #[error(transparent)]
     Git(#[from] GitError),
+
+    #[error("Failed deletion of directory {path} for {operation}. {kind:?}")]
+    RemoveDir {
+        path: PathBuf,
+        operation: String,
+        kind: ErrorKind,
+    },
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq, Clone))]
@@ -120,7 +126,13 @@ impl Driver for Plugin {
         let path = volume.create_path_from(&self.base_path);
         if path.exists() {
             println!("Repository directory {:?} already exists. Remooving", &path);
-            fs::remove_dir_all(&path).await.map_io_error(&path)?;
+            fs::remove_dir_all(&path)
+                .await
+                .map_err(|e| Error::RemoveDir {
+                    path: path.clone(),
+                    operation: "exists repository dir".to_string(),
+                    kind: e.kind(),
+                })?;
         }
         self.git.clone(&path, &volume.repo).await?;
 
@@ -157,12 +169,18 @@ impl Driver for Plugin {
     }
 }
 
-async fn remove_dir_if_exists(path: Option<PathBuf>) -> crate::result::Result<()> {
+async fn remove_dir_if_exists(path: Option<PathBuf>) -> Result<(), Error> {
     if let Some(path) = path
         && path.exists()
     {
         println!("Attempting to remove directory {:?}", &path);
-        fs::remove_dir_all(&path).await.map_io_error(&path)?;
+        fs::remove_dir_all(&path)
+            .await
+            .map_err(|e| Error::RemoveDir {
+                path: path.clone(),
+                operation: "remove dir if exists".to_string(),
+                kind: e.kind(),
+            })?;
     }
 
     Ok(())
@@ -272,18 +290,7 @@ mod test_mocks {
 
     impl TempPlugin {
         pub async fn with_temp_volume(self, volume_name: &str, raw_repo: RawRepo) -> Self {
-            // let test_repo = TestRepo::new();
-            // let repo = raw_repo.unwrap_or_default();
-            let plugin = self
-                .plugin
-                .with_volume(
-                    volume_name,
-                    raw_repo, // RawRepo {
-                              //     url: Some(test_repo.path().as_os_str().to_str().unwrap().to_string()),
-                              //     ..repo
-                              // },
-                )
-                .await;
+            let plugin = self.plugin.with_volume(volume_name, raw_repo).await;
 
             Self {
                 plugin,
