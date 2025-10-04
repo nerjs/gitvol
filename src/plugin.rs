@@ -1,4 +1,4 @@
-use crate::{git, result::ErrorIoExt};
+use crate::result::ErrorIoExt;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -6,7 +6,10 @@ use tokio::fs;
 use crate::{
     domains::{repo::RawRepo, volume::Status as VolumeStatus},
     driver::{Driver, ItemVolume, VolumeInfo},
-    services::volumes::{Error as VolumesError, Volumes},
+    services::{
+        git::{Error as GitError, Git},
+        volumes::{Error as VolumesError, Volumes},
+    },
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -16,6 +19,9 @@ pub enum Error {
 
     #[error(transparent)]
     App(#[from] crate::result::Error),
+
+    #[error(transparent)]
+    Git(#[from] GitError),
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq, Clone))]
@@ -34,13 +40,15 @@ impl From<VolumeStatus> for Status {
 pub struct Plugin {
     base_path: PathBuf,
     volumes: Volumes,
+    git: Git,
 }
 
 impl Plugin {
-    pub fn new(base_path: &Path) -> Self {
+    pub fn new(base_path: &Path, git: Git) -> Self {
         Self {
             base_path: base_path.to_path_buf(),
             volumes: Volumes::new(),
+            git,
         }
     }
 }
@@ -103,7 +111,7 @@ impl Driver for Plugin {
             println!("Repository {} already cloned.", name);
             if volume.repo.refetch {
                 println!("Attempting to refetch repository {} for id {}.", name, id);
-                git::refetch(&path).await?;
+                self.git.refetch(&path).await?;
             }
             volume.containers.insert(id.to_string());
             return Ok(path);
@@ -114,7 +122,7 @@ impl Driver for Plugin {
             println!("Repository directory {:?} already exists. Remooving", &path);
             fs::remove_dir_all(&path).await.map_io_error(&path)?;
         }
-        git::clone(&path, &volume.repo).await?;
+        self.git.clone(&path, &volume.repo).await?;
 
         volume.containers.insert(id.to_string());
         volume.status = VolumeStatus::Clonned;
@@ -163,7 +171,7 @@ async fn remove_dir_if_exists(path: Option<PathBuf>) -> crate::result::Result<()
 #[cfg(test)]
 mod test_mocks {
     use super::*;
-    use crate::git::test::TestRepo;
+    use crate::services::git::test_mocks::TestRepo;
     use std::ops::Deref;
     use tempfile::{Builder as TempBuilder, TempDir};
 
@@ -182,29 +190,14 @@ mod test_mocks {
         }
     }
 
-    #[allow(unused)]
-    pub struct TempWithTestRepoPlugin {
-        plugin: Plugin,
-        temp: TempDir,
-        pub test_repo: TestRepo,
-    }
-
-    impl Deref for TempWithTestRepoPlugin {
-        type Target = Plugin;
-
-        fn deref(&self) -> &Self::Target {
-            &self.plugin
-        }
-    }
-
     impl Plugin {
-        pub fn stub() -> Self {
-            Self::new(&std::env::temp_dir())
+        pub async fn stub() -> Self {
+            Self::new(&std::env::temp_dir(), Git::init().await.unwrap())
         }
 
-        pub fn temp() -> TempPlugin {
+        pub async fn temp() -> TempPlugin {
             let temp = TempBuilder::new().prefix("temp-gitvol-").tempdir().unwrap();
-            let plugin = Self::new(&temp.path());
+            let plugin = Self::new(&temp.path(), Git::init().await.unwrap());
             TempPlugin { plugin, temp }
         }
 
@@ -278,33 +271,48 @@ mod test_mocks {
     }
 
     impl TempPlugin {
-        pub async fn with_temp_volume(
-            self,
-            volume_name: &str,
-            raw_repo: Option<RawRepo>,
-        ) -> TempWithTestRepoPlugin {
-            let test_repo = TestRepo::get_or_create().await.unwrap();
-            let repo = raw_repo.unwrap_or_default();
+        pub async fn with_temp_volume(self, volume_name: &str, raw_repo: RawRepo) -> Self {
+            // let test_repo = TestRepo::new();
+            // let repo = raw_repo.unwrap_or_default();
             let plugin = self
                 .plugin
                 .with_volume(
                     volume_name,
-                    RawRepo {
-                        url: Some(test_repo.file.clone()),
-                        ..repo
-                    },
+                    raw_repo, // RawRepo {
+                              //     url: Some(test_repo.path().as_os_str().to_str().unwrap().to_string()),
+                              //     ..repo
+                              // },
                 )
                 .await;
 
-            TempWithTestRepoPlugin {
+            Self {
                 plugin,
-                test_repo,
                 temp: self.temp,
             }
         }
 
-        pub async fn with_stub_temp_volume(self) -> TempWithTestRepoPlugin {
-            self.with_temp_volume(VOLUME_NAME, None).await
+        pub async fn with_stub_test_repo(self) -> (TestRepo, Self) {
+            let test_repo = TestRepo::new();
+            let plugin = self
+                .with_temp_volume(VOLUME_NAME, test_repo.create_raw_repo(None, None, None))
+                .await;
+            (test_repo, plugin)
+        }
+    }
+
+    impl TestRepo {
+        pub fn create_raw_repo(
+            &self,
+            branch: Option<String>,
+            tag: Option<String>,
+            refetch: Option<String>,
+        ) -> RawRepo {
+            RawRepo {
+                url: Some(self.path().as_os_str().to_str().unwrap().to_string()),
+                branch,
+                tag,
+                refetch,
+            }
         }
     }
 }
@@ -316,21 +324,21 @@ mod test {
     use rstest::rstest;
     use std::ops::Deref;
 
-    use crate::git::test::{TestRepo, is_git_dir};
+    use crate::services::git::test_mocks::TestRepo;
 
     #[tokio::test]
     async fn list_empty_initial() {
-        Plugin::stub().test_is_empty_list().await;
+        Plugin::stub().await.test_is_empty_list().await;
     }
 
     #[tokio::test]
     async fn path_nonexistent_returns_none() {
-        Plugin::stub().test_stub_path_is(None).await;
+        Plugin::stub().await.test_stub_path_is(None).await;
     }
 
     #[tokio::test]
     async fn get_nonexistent_returns_error() {
-        let plugin = Plugin::stub();
+        let plugin = Plugin::stub().await;
 
         let result = plugin.get(VOLUME_NAME).await;
         assert!(
@@ -350,6 +358,7 @@ mod test {
     #[tokio::test]
     async fn create_success_new_volume(#[case] raw_repo: RawRepo) {
         Plugin::stub()
+            .await
             .with_volume(VOLUME_NAME, raw_repo)
             .await
             .test_in_list_by_names(vec![VOLUME_NAME])
@@ -365,7 +374,7 @@ mod test {
 
     #[tokio::test]
     async fn create_duplicate_name_error() {
-        let plugin = Plugin::stub().with_stub_volume().await;
+        let plugin = Plugin::stub().await.with_stub_volume().await;
 
         let second_creating = plugin.create(VOLUME_NAME, Some(RawRepo::stub())).await;
         assert!(
@@ -394,7 +403,7 @@ mod test {
         #[case] volume_name: &str,
         #[case] raw_repo: Option<RawRepo>,
     ) {
-        let plugin = Plugin::stub();
+        let plugin = Plugin::stub().await;
 
         let result = plugin.create(volume_name, raw_repo.clone()).await;
         assert!(
@@ -412,6 +421,7 @@ mod test {
     #[tokio::test]
     async fn list_multiple_volumes() {
         Plugin::stub()
+            .await
             .with_stub_volume()
             .await
             .with_volume("other_volume", RawRepo::stub())
@@ -422,7 +432,7 @@ mod test {
 
     #[tokio::test]
     async fn path_after_mount_returns_some() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id-123").await.unwrap();
 
@@ -431,7 +441,7 @@ mod test {
 
     #[tokio::test]
     async fn get_created_unmounted_status() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let created = plugin.get(VOLUME_NAME).await.unwrap();
         assert_eq!(
@@ -455,7 +465,7 @@ mod test {
 
     #[tokio::test]
     async fn get_after_mount_status_clonned() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id-123").await.unwrap();
 
@@ -472,7 +482,7 @@ mod test {
 
     #[tokio::test]
     async fn remove_nonexistent_by_empty_ok() {
-        let plugin = Plugin::stub();
+        let plugin = Plugin::stub().await;
         let result = plugin.remove("other_volume").await;
         assert!(result.is_ok());
 
@@ -481,7 +491,7 @@ mod test {
 
     #[tokio::test]
     async fn remove_nonexistent_with_other_volumes_ok() {
-        let plugin = Plugin::stub().with_stub_volume().await;
+        let plugin = Plugin::stub().await.with_stub_volume().await;
 
         let result = plugin.remove("other_volume").await;
         assert!(result.is_ok());
@@ -491,7 +501,7 @@ mod test {
 
     #[tokio::test]
     async fn remove_existing_unmounted_ok() {
-        let plugin = Plugin::stub().with_stub_volume().await;
+        let plugin = Plugin::stub().await.with_stub_volume().await;
 
         let result = plugin.remove(VOLUME_NAME).await;
         assert!(result.is_ok());
@@ -505,7 +515,7 @@ mod test {
 
     #[tokio::test]
     async fn remove_existing_mounted_ok() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id").await.unwrap();
         let result = plugin.remove(VOLUME_NAME).await;
@@ -517,17 +527,17 @@ mod test {
 
     #[tokio::test]
     async fn mount_first_time_clones_repo() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (test_repo, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id").await.unwrap();
 
-        assert!(!is_git_dir(&mountpoint));
-        assert!(plugin.test_repo.is_master(&mountpoint));
+        TestRepo::test_is_not_git(&mountpoint);
+        test_repo.test_is_default_branch(&mountpoint);
     }
 
     #[tokio::test]
     async fn mount_when_already_mounted_no_clone() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let first_mountpoint = plugin.mount(VOLUME_NAME, "id-1").await.unwrap();
         let second_mountpoint = plugin.mount(VOLUME_NAME, "id-2").await.unwrap();
@@ -537,79 +547,59 @@ mod test {
 
     #[tokio::test]
     async fn mount_with_branch() {
+        let test_repo = TestRepo::new().with_branch("develop");
         let plugin = Plugin::temp()
+            .await
             .with_temp_volume(
                 VOLUME_NAME,
-                Some(RawRepo {
-                    branch: Some("develop".into()),
-                    ..Default::default()
-                }),
+                test_repo.create_raw_repo(Some("develop".into()), None, None),
             )
             .await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id").await.unwrap();
-        assert!(plugin.test_repo.is_develop(&mountpoint));
+        TestRepo::test_is_branch(&mountpoint, "develop");
     }
 
     #[tokio::test]
     async fn mount_with_tag() {
+        let test_repo = TestRepo::new().with_tag("v1");
         let plugin = Plugin::temp()
+            .await
             .with_temp_volume(
                 VOLUME_NAME,
-                Some(RawRepo {
-                    tag: Some("v1".into()),
-                    ..Default::default()
-                }),
+                test_repo.create_raw_repo(None, Some("v1".into()), None),
             )
             .await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id").await.unwrap();
-        assert!(plugin.test_repo.is_tag(&mountpoint));
+        TestRepo::test_is_tag(&mountpoint, "v1");
     }
 
     #[tokio::test]
     async fn mount_with_refetch() {
         let branch_name = "some_branch";
+        let test_repo = TestRepo::new().with_branch(branch_name);
         let plugin = Plugin::temp()
+            .await
             .with_temp_volume(
                 VOLUME_NAME,
-                Some(RawRepo {
-                    refetch: Some("true".into()),
-                    branch: Some(branch_name.into()),
-                    ..Default::default()
-                }),
+                test_repo.create_raw_repo(Some(branch_name.into()), None, Some("true".into())),
             )
             .await;
 
-        plugin
-            .test_repo
-            .setup_temp_branch(branch_name)
-            .await
-            .unwrap();
         let mountpoint = plugin.mount(VOLUME_NAME, "id-1").await.unwrap();
-        assert!(is_git_dir(&mountpoint));
-        assert!(
-            !TestRepo::is_temp_changed(&mountpoint, branch_name)
-                .await
-                .unwrap()
-        );
+        TestRepo::test_is_git(&mountpoint);
+        TestRepo::test_is_branch(&mountpoint, branch_name);
 
-        plugin
-            .test_repo
-            .change_temp_branch(branch_name)
-            .await
-            .unwrap();
+        test_repo.change(branch_name, "changed value");
+
         plugin.mount(VOLUME_NAME, "id-2").await.unwrap();
-        assert!(
-            TestRepo::is_temp_changed(&mountpoint, branch_name)
-                .await
-                .unwrap()
-        );
+        TestRepo::test_is_changed(&mountpoint, branch_name, "changed value");
     }
 
     #[tokio::test]
     async fn mount_clone_failure_on_bad_url() {
-        let plugin = Plugin::stub().with_volume(
+        let plugin = Plugin::stub().await.with_volume(
             VOLUME_NAME,
             RawRepo {
                 url: Some("http://host/path-to-git-repo".into()),
@@ -626,7 +616,7 @@ mod test {
 
     #[tokio::test]
     async fn unmount_nonexistent_ok() {
-        let plugin = Plugin::stub();
+        let plugin = Plugin::stub().await;
 
         let result = plugin.unmount("name", "id").await;
         assert!(result.is_ok());
@@ -634,7 +624,7 @@ mod test {
 
     #[tokio::test]
     async fn unmount_with_multiple_containers_keeps_dir() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id-1").await.unwrap();
         plugin.mount(VOLUME_NAME, "id-2").await.unwrap();
@@ -656,7 +646,7 @@ mod test {
 
     #[tokio::test]
     async fn unmount_last_container_removes_dir_and_clears() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id-1").await.unwrap();
         plugin.mount(VOLUME_NAME, "id-2").await.unwrap();
@@ -681,7 +671,7 @@ mod test {
 
     #[tokio::test]
     async fn unmount_unknown_container_id_no_panic() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id-1").await.unwrap();
         let result = plugin.unmount(VOLUME_NAME, "ghost-id").await;
@@ -712,7 +702,7 @@ mod test {
 
     #[tokio::test]
     async fn happy_flow_create_mount_get_path_unmount_remove() {
-        let plugin = Plugin::temp().with_stub_temp_volume().await;
+        let (_g, plugin) = Plugin::temp().await.with_stub_test_repo().await;
         full_check(&plugin, None, VolumeStatus::Created).await;
 
         let mountpoint = plugin.mount(VOLUME_NAME, "id").await.unwrap();

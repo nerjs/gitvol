@@ -22,30 +22,11 @@ pub enum Error {
     #[error(transparent)]
     Volumes(#[from] crate::services::volumes::Error),
 
-    #[error("Failed to execute command '{cmd} {args:?}' with reason: {reason:?}")]
-    Cmd {
-        reason: String,
-        cmd: String,
-        args: Vec<String>,
-    },
-
     #[error("Error converting to utf-8:  {:?}", .0)]
     FromUtf8(#[from] FromUtf8Error),
 
-    #[error("Repository local path '{path}' already exists")]
-    PathAlreadyExists { path: PathBuf },
-    #[error("Repository local path '{path}' not exists")]
-    PathNotExists { path: PathBuf },
-
-    #[error("Failed to remove {reason}. Error kind: {kind:?}")]
-    RemoveDirectory { kind: ErrorKind, reason: String },
-
     #[error("IO error [{reason:?}] : {kind:?}")]
     Io { kind: ErrorKind, reason: String },
-
-    #[cfg(test)]
-    #[error("Temporary test file {file:?} not found or not a file")]
-    TestTmpNotExists { file: PathBuf },
 }
 
 pub trait ErrorIoExt<T> {

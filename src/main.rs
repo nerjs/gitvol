@@ -1,6 +1,5 @@
 mod domains;
 mod driver;
-mod git;
 mod macros;
 mod plugin;
 mod result;
@@ -22,6 +21,7 @@ use crate::{
     driver::Driver,
     plugin::Plugin,
     result::{Error, ErrorIoExt, Result},
+    services::git::Git,
 };
 
 #[tokio::main]
@@ -31,15 +31,14 @@ async fn main() -> Result<()> {
     debug!("tratata");
     let settings = Settings::parse().await?;
 
-    git::ensure_git_exists().await?;
-
     if settings.socket.exists() {
         fs::remove_file(&settings.socket)
             .await
             .map_io_error(&settings.socket)?;
     }
 
-    let plugin = Plugin::new(&settings.mount_path).into_router();
+    let git = Git::init().await.unwrap();
+    let plugin = Plugin::new(&settings.mount_path, git).into_router();
     let listener = UnixListener::bind(&settings.socket).map_io_error(&settings.socket)?;
     info!("listening on {:?}", listener.local_addr().unwrap());
 

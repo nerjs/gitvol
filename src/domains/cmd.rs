@@ -34,6 +34,7 @@ pub struct Error {
     kind: KindError,
 }
 
+#[derive(Clone)]
 pub struct Cmd(String);
 
 impl Cmd {

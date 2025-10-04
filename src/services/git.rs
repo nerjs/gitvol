@@ -22,6 +22,7 @@ pub enum Error {
     RemoveGit(#[from] std::io::Error),
 }
 
+#[derive(Clone)]
 pub struct Git {
     cmd: Cmd,
 }
@@ -87,7 +88,7 @@ impl Git {
 }
 
 #[cfg(test)]
-mod test_mocks {
+pub mod test_mocks {
     use std::{fs, path::Path, process::Command, str::FromStr};
 
     use tempfile::{TempDir, tempdir};
@@ -97,7 +98,7 @@ mod test_mocks {
     #[derive(Debug)]
     pub struct TestRepo {
         temp: TempDir,
-        default_branch: String
+        default_branch: String,
     }
 
     fn has_config_field(dir: &Path, field: &str) -> bool {
@@ -116,7 +117,6 @@ mod test_mocks {
             let temp = TempDir::with_prefix("test-repository-").unwrap();
             let default_branch = "master".to_string();
 
-            let current_dir = std::env::current_dir().unwrap();
             Command::new("git")
                 .current_dir(temp.path())
                 .args(["init", "--bare", "--initial-branch", &default_branch])
@@ -125,7 +125,7 @@ mod test_mocks {
 
             let test_repo = Self {
                 temp,
-                default_branch: default_branch.clone()
+                default_branch: default_branch.clone(),
             };
             test_repo.with_branch(&default_branch)
         }
